@@ -1,4 +1,6 @@
+import { after } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { notifyPaymentReceived } from "@/lib/whatsapp-notify";
 import { peyPushPaymentSchema, peyQrPaymentSchema, pesosToCents, verifyPeyWebhook } from "@/lib/payment-validation";
 
 export const runtime = "nodejs";
@@ -103,6 +105,10 @@ export async function POST(request: Request) {
       return respond(503, { error: "Pago pendiente de procesamiento." });
     }
     console.info("pey_webhook_processed", { webhookId: id, outcome: data.outcome });
+    if ((data.outcome === "paid" || data.outcome === "paid_late") && typeof data.due_id === "string") {
+      const dueId = data.due_id;
+      after(() => notifyPaymentReceived(dueId));
+    }
     return respond(200, { received: true });
   } catch {
     console.error("pey_webhook_processing_failed", { webhookId: id });
