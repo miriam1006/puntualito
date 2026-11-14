@@ -20,9 +20,15 @@ Pendiente (en orden sugerido):
 
 1. ~~Verificar el push contra `docs.pey.mx/openapi.json`~~. Hecho: `POST /codi/pn` y `codi.pn.payment_received` coinciden con la referencia oficial (copia en `docs/pey-openapi.json`, versión 2026-10-20). Falta probarlo con un celular real.
 2. ~~Conciliación manual~~. Hecho: botón "Verificar pago" en el panel → `POST /api/dues/<id>/verify`, que consulta `GET /transaction/{id}` (push) o `GET /transaction/codi/qr/{id}` (QR) y registra el pago por `process_pey_payment` con `webhook_id` `reconcile:<transactionId>`.
-3. Cobros programados: la tabla `plans` existe, falta el job (Vercel Cron) que genera adeudos y recordatorios.
-4. WhatsApp Business: aprobar las plantillas en Meta y probar con el número de prueba (no se ha probado contra Meta real). El cron debe leer `reminder_requests` y llamar `notifyDueReminder`.
-5. Pantalla para resolver adeudos "Por revisar" y editar o dar de baja clientes.
+3. ~~Cobros programados y recordatorios~~. Hecho: Vercel Cron genera los adeudos de los planes, envía la plantilla de cobro nuevo por WhatsApp (`onDuesGenerated`) y procesa los recordatorios "Más tarde" vencidos (`reminder_requests`).
+4. WhatsApp Business: aprobar las plantillas en Meta y probar con el número de prueba (no se ha probado contra Meta real). Sin las variables `WHATSAPP_*` el cron solo registra en logs.
+5. ~~Pantalla para resolver adeudos "Por revisar" y editar o dar de baja clientes~~. Hecho: `/revisar` y `/clientes`.
+
+## Por revisar y cobros programados
+
+- **`/revisar`:** adeudos con pago repetido, monto distinto o pagados después de cancelar, con sus recibos. Acciones (función `resolve_due`, con auditoría): *Marcar como pagado*, *Requiere reembolso* (nota obligatoria; sigue en revisión) y *Cerrar revisión* (queda pagado si ya tenía un pago válido; si no, cancelado).
+- **`/clientes`:** editar (`update_customer`) y dar de baja (`deactivate_customer`, detiene sus planes) clientes; programar cobros semanales o mensuales por cliente (`create_plan`, `deactivate_plan`).
+- **Generación:** `generate_due_dues` crea los adeudos vencidos de los planes activos. Es idempotente (`unique (plan_id, due_date)`) y recupera hasta 12 periodos atrasados. La corre Vercel Cron a diario (`vercel.json`, 13:00 UTC = 7:00 en CDMX) en `/api/cron/generate-dues` con `CRON_SECRET`, y el botón "Generar cobros ahora" del panel para la demo.
 
 ## Cómo funciona un cobro
 
@@ -49,7 +55,7 @@ cp .env.example .env.local   # completar; nunca subirlo a git
 npm run dev
 ```
 
-1. **Supabase:** crear un proyecto nuevo y ejecutar `supabase/migrations/202611140001_initial.sql` en el SQL Editor. Crear un usuario en Authentication → Users (confirmado) y poner su correo en `OWNER_EMAIL`.
+1. **Supabase:** crear un proyecto nuevo y ejecutar en orden las migraciones de `supabase/migrations/` en el SQL Editor. Crear un usuario en Authentication → Users (confirmado) y poner su correo en `OWNER_EMAIL`.
 2. **Pey:** crear una API key nueva en el portal (Desarrollador). Una key tiene un solo webhook, así que no reutilices la de otro proyecto.
 3. **Desplegar en Vercel** con las variables de `.env.example` y `APP_URL` igual al dominio HTTPS, sin barra final.
 4. **Webhook:** en Pey → Desarrollador → engrane de la key, registrar `https://TU-DOMINIO/api/webhooks/pey`, crear el secreto y guardarlo en `PEY_WEBHOOK_SECRET`. Redesplegar.
@@ -72,6 +78,7 @@ npm run dev
 | `WHATSAPP_VERIFY_TOKEN` | Texto libre para el handshake al registrar el webhook |
 | `WHATSAPP_TEMPLATE_NEW_DUE`, `WHATSAPP_TEMPLATE_REMINDER`, `WHATSAPP_TEMPLATE_PAYMENT_RECEIVED` | Nombres de plantillas aprobadas. Sin la de cobro nuevo no se envía el cobro; sin la de pago recibido se manda texto (solo llega dentro de las 24 h) |
 | `WHATSAPP_TEMPLATE_LANGUAGE` | Idioma de las plantillas; por omisión `es_MX`. Opcional: `WHATSAPP_GRAPH_VERSION` (por omisión `v23.0`) |
+| `CRON_SECRET` | Protege `/api/cron/generate-dues`; Vercel Cron lo envía solo |
 
 **No hay sandbox en Pey: los pagos son reales.** Deja `PEY_MAX_AMOUNT_CENTS=1` mientras pruebas y súbelo solo cuando el flujo completo esté verificado.
 
@@ -128,4 +135,9 @@ src/app/page.tsx         panel del comercio
 npm run typecheck
 npm test
 npm run build
+
+# SQL en un Postgres local (no Supabase): stubs, migraciones en orden y pruebas (terminan en ROLLBACK)
+for f in supabase/tests/local_stubs.sql supabase/migrations/*.sql supabase/tests/payment_flow.sql supabase/tests/review_and_plans.sql; do
+  psql -v ON_ERROR_STOP=1 -d puntualito_test -f "$f" || break
+done
 ```
