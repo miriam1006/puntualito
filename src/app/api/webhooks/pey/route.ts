@@ -57,8 +57,8 @@ export async function POST(request: Request) {
 
   const type = (verified as { type?: unknown }).type;
   let payment: {
-    kind: "qr" | "push"; payload: Record<string, unknown>; apiKeyId: string | null | undefined;
-    peyRef: string; numRef: string | null; transactionId: string; amount: number; datePaid: number;
+    kind: "qr" | "push"; payload: Record<string, unknown>; apiKeyId: string;
+    peyRef: string; numRef: string; transactionId: string; amount: number; datePaid: number;
   };
   if (type === "codi.qr.payment_received") {
     const parsed = peyQrPaymentSchema.safeParse(verified);
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
     if (!parsed.success) return invalidContract(id, parsed.error.issues.map(issue => issue.path.join(".")));
     const p = parsed.data;
     // En push, la referencia guardada al crear el cobro es el transactionId.
-    payment = { kind: "push", payload: p, apiKeyId: p.apiKeyId, peyRef: p.transactionId, numRef: p.numRef ?? null,
+    payment = { kind: "push", payload: p, apiKeyId: p.apiKeyId, peyRef: p.transactionId, numRef: p.numRef,
       transactionId: p.transactionId, amount: p.amount, datePaid: p.datePaid };
   } else {
     // Otros eventos firmados (por ejemplo bank.account.updated) no cambian cobros.
@@ -79,7 +79,7 @@ export async function POST(request: Request) {
     return respond(200, { received: true, ignored: true });
   }
 
-  if (payment.apiKeyId && payment.apiKeyId !== expectedApiKeyId) {
+  if (payment.apiKeyId !== expectedApiKeyId) {
     console.warn("pey_webhook_rejected", { webhookId: id, reason: "api_key_id_mismatch", status: 401 });
     return respond(401, { error: "Cuenta no autorizada." });
   }

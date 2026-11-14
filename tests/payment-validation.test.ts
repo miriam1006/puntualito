@@ -59,13 +59,20 @@ test("el evento de QR descarta metadata bancaria y rechaza montos imposibles", (
   }
 });
 
-test("el evento de push descarta metadata y tolera campos opcionales ausentes", () => {
-  const payload = { type: "codi.pn.payment_received", amount: 0.01, datePaid: 1790724818,
-    transactionId: "txn-id", bankAccountId: "bank", metadata: { clabe: "sensitive" } };
+test("el evento de push sigue el ejemplo oficial y descarta metadata bancaria", () => {
+  // Ejemplo de docs.pey.mx/docs/webhooks/codi/pn.
+  const payload = { amount: 100, apiKeyId: "01M3QMMR6X9CBVDY1SF3G8QWNW", bankAccountId: "01JBAVWE4NS5TGXHWGMX3KH23Q",
+    concept: "(dev) Order 45", datePaid: 1790724758, metadata: { clabe: "000000000000000000", bankCode: 40012 },
+    numRef: "4567", transactionId: "01M3QR5E7XHXMNZDEPFH3JAWS0", type: "codi.pn.payment_received" };
   const parsed = peyPushPaymentSchema.parse(payload);
   assert.equal("metadata" in parsed, false);
   assert.equal("bankAccountId" in parsed, false);
-  assert.equal(peyPushPaymentSchema.safeParse({ ...payload, numRef: "7", apiKeyId: "k", concept: "x" }).success, true);
+  assert.equal(parsed.numRef, "4567");
+  for (const required of ["apiKeyId", "numRef", "transactionId", "amount", "datePaid"]) {
+    const incomplete: Record<string, unknown> = { ...payload };
+    delete incomplete[required];
+    assert.equal(peyPushPaymentSchema.safeParse(incomplete).success, false, required);
+  }
   assert.equal(peyPushPaymentSchema.safeParse({ ...payload, transactionId: "" }).success, false);
   assert.equal(peyPushPaymentSchema.safeParse({ ...payload, type: "codi.qr.payment_received" }).success, false);
 });

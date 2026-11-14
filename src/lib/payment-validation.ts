@@ -59,18 +59,34 @@ export const peyQrPaymentSchema = z.object({
   transactionId: z.string().min(1).max(128),
 });
 
-/** POR VERIFICAR contra docs.pey.mx: los campos del evento de push salen de notas de
- * otros equipos, no de la referencia oficial. Por eso `apiKeyId`, `concept` y `numRef`
- * son opcionales aquí; la firma del webhook ya autentica la API key. */
+/** Verificado contra docs.pey.mx/docs/webhooks/codi/pn: mismo contrato que el de QR,
+ * sin `codiQrId`. El `transactionId` es el mismo que devuelve POST /codi/pn. */
 export const peyPushPaymentSchema = z.object({
   type: z.literal("codi.pn.payment_received"),
   amount: paidAmount,
-  apiKeyId: z.string().min(1).max(128).nullish(),
-  concept: z.string().max(1000).nullish(),
+  apiKeyId: z.string().min(1).max(128),
+  concept: z.string().max(1000),
   datePaid: z.number().int().positive().max(253_402_300_799),
-  numRef: numRef.nullish(),
+  numRef,
   transactionId: z.string().min(1).max(128),
+});
+
+/** GET /transaction/{id} y cada elemento de GET /transaction/codi/qr/{id}.
+ * `metadata` (puede traer la CLABE) se descarta igual que en los webhooks. */
+export const peyTransactionSchema = z.object({
+  id: z.string().min(1).max(128),
+  status: z.string().min(1).max(32),
+  amount: paidAmount,
+  paymentMethod: z.string().max(32).nullish(),
+  payableType: z.string().max(32).nullish(),
+  datePaid: z.number().int().positive().max(253_402_300_799).nullish(),
+});
+
+export const peyQrTransactionsSchema = z.object({
+  items: z.array(peyTransactionSchema).max(100),
+  nextToken: z.string().max(4096).nullish(),
 });
 
 export type PeyQrPayment = z.infer<typeof peyQrPaymentSchema>;
 export type PeyPushPayment = z.infer<typeof peyPushPaymentSchema>;
+export type PeyTransaction = z.infer<typeof peyTransactionSchema>;

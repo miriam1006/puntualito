@@ -6,13 +6,20 @@ export const dynamic = "force-dynamic";
 
 const DUE_FIELDS = "id,concept,amount_cents,status,due_date,public_token,paid_at,created_at,customers(id,name,phone)";
 
+/** "Verificar pago" solo tiene sentido si Pey ya creó un QR o push para el adeudo abierto. */
+function withVerifyFlag({ attempts, ...due }: Record<string, any>) {
+  const canVerify = due.status === "open" && Array.isArray(attempts)
+    && attempts.some((a: { status: string; pey_ref: string | null }) => a.pey_ref && ["pending", "expired"].includes(a.status));
+  return { ...due, can_verify: canVerify };
+}
+
 export async function GET() {
   try {
     const { admin, merchant } = await merchantAccess();
-    const { data, error } = await admin.from("dues").select(DUE_FIELDS)
+    const { data, error } = await admin.from("dues").select(`${DUE_FIELDS},attempts!attempts_due_id_fkey(status,pey_ref)`)
       .eq("merchant_id", merchant.id).order("created_at", { ascending: false }).limit(200);
     if (error) throw new ApiError(503, "No se pudieron consultar los cobros.");
-    return ok({ dues: data ?? [] });
+    return ok({ dues: (data ?? []).map(withVerifyFlag) });
   } catch (e) { return fail(e); }
 }
 
