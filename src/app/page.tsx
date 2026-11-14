@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { clientApi } from "@/lib/client-api";
 import { formatCents, parsePesosToCents } from "@/lib/phone";
+import { groupByDue, WhatsAppHistory, type WhatsAppMessage } from "./WhatsAppHistory";
 
 type Customer = { id: string; name: string; phone: string | null; preferred_channel: string };
 type Due = {
@@ -23,11 +24,16 @@ export default function Dashboard() {
   const [copied, setCopied] = useState("");
   const [verifying, setVerifying] = useState("");
   const [verifyResult, setVerifyResult] = useState<{ dueId: string; text: string } | null>(null);
+  const [messagesByDue, setMessagesByDue] = useState<Record<string, WhatsAppMessage[]>>({});
 
   const refresh = useCallback(async () => {
     const [c, d] = await Promise.all([clientApi("/api/customers"), clientApi("/api/dues")]);
     setCustomers(c.customers);
     setDues(d.dues);
+    // Sin la migración de WhatsApp el panel sigue funcionando, solo sin historial.
+    clientApi("/api/whatsapp/messages")
+      .then(({ messages }: { messages: WhatsAppMessage[] }) => setMessagesByDue(groupByDue(messages)))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -110,6 +116,7 @@ export default function Dashboard() {
                   <strong>{formatCents(due.amount_cents)}</strong>
                 </div>
                 <span className={`pill ${due.status}`}>{STATUS_LABEL[due.status]}</span>
+                <WhatsAppHistory messages={messagesByDue[due.id]} />
                 {due.status === "open" && (
                   <div className="actions">
                     <a className="button" href={`/pagar/${due.public_token}`} target="_blank" rel="noreferrer">Mostrar QR</a>

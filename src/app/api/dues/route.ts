@@ -1,5 +1,7 @@
+import { after } from "next/server";
 import { z } from "zod";
 import { ApiError, fail, jsonBody, merchantAccess, ok, sameOrigin } from "@/lib/api";
+import { notifyDueCreated } from "@/lib/whatsapp-notify";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,6 +47,7 @@ export async function POST(request: Request) {
     const created = Array.isArray(data) ? data[0] : data;
     const { data: due, error: readError } = await admin.from("dues").select(DUE_FIELDS).eq("id", created.id).single();
     if (readError || !due) throw new ApiError(503, "El cobro se creó; recarga para verlo.");
+    if (input.data.customer_id) after(() => notifyDueCreated(created.id));
     return ok({ due }, 201);
   } catch (e) { return fail(e); }
 }

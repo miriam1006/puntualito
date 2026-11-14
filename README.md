@@ -13,14 +13,15 @@ Incluye:
 - Motor de cobro: cliente de Pey, webhook firmado, recibos, auditoría.
 - Adeudos (`dues`) separados de intentos (`attempts`), con **un solo intento vivo por adeudo**.
 - Link público de pago `/pagar/<token>`: QR o push, con estado en vivo.
-- Panel del comercio: clientes, crear cobro, lista de pagados y pendientes, botón para enviar el link por WhatsApp (abre `wa.me`, no usa la API de WhatsApp Business).
+- Panel del comercio: clientes, crear cobro, lista de pagados y pendientes, historial de WhatsApp por cobro y botón `wa.me` de respaldo.
+- WhatsApp Business (Cloud API): plantilla con "Pagar ahora", "Más tarde" y "Prefiero QR" al crear el cobro, QR por WhatsApp, "Pago recibido" y estados de entrega. Ver "WhatsApp Business".
 
 Pendiente (en orden sugerido):
 
 1. ~~Verificar el push contra `docs.pey.mx/openapi.json`~~. Hecho: `POST /codi/pn` y `codi.pn.payment_received` coinciden con la referencia oficial (copia en `docs/pey-openapi.json`, versión 2026-10-20). Falta probarlo con un celular real.
 2. ~~Conciliación manual~~. Hecho: botón "Verificar pago" en el panel → `POST /api/dues/<id>/verify`, que consulta `GET /transaction/{id}` (push) o `GET /transaction/codi/qr/{id}` (QR) y registra el pago por `process_pey_payment` con `webhook_id` `reconcile:<transactionId>`.
 3. Cobros programados: la tabla `plans` existe, falta el job (Vercel Cron) que genera adeudos y recordatorios.
-4. WhatsApp Business API con botones ("Pagar ahora", "Más tarde", "Prefiero QR").
+4. WhatsApp Business: aprobar las plantillas en Meta y probar con el número de prueba (no se ha probado contra Meta real). El cron debe leer `reminder_requests` y llamar `notifyDueReminder`.
 5. Pantalla para resolver adeudos "Por revisar" y editar o dar de baja clientes.
 
 ## Cómo funciona un cobro
@@ -66,8 +67,36 @@ npm run dev
 | `PEY_API_KEY_ID` | Identificador de esa key (campo `apiKeyId` en los Webhook Logs de Pey) |
 | `PEY_WEBHOOK_SECRET` | Secreto de Standard Webhooks |
 | `PEY_MAX_AMOUNT_CENTS` | Tope por cobro en centavos. **Si falta, es 1 ($0.01).** |
+| `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN` | Número de WhatsApp y token de Meta. Si falta alguno, no se envía nada (queda `wa.me`) |
+| `WHATSAPP_APP_SECRET` | App Secret de Meta; verifica `X-Hub-Signature-256` del webhook |
+| `WHATSAPP_VERIFY_TOKEN` | Texto libre para el handshake al registrar el webhook |
+| `WHATSAPP_TEMPLATE_NEW_DUE`, `WHATSAPP_TEMPLATE_REMINDER`, `WHATSAPP_TEMPLATE_PAYMENT_RECEIVED` | Nombres de plantillas aprobadas. Sin la de cobro nuevo no se envía el cobro; sin la de pago recibido se manda texto (solo llega dentro de las 24 h) |
+| `WHATSAPP_TEMPLATE_LANGUAGE` | Idioma de las plantillas; por omisión `es_MX`. Opcional: `WHATSAPP_GRAPH_VERSION` (por omisión `v23.0`) |
 
 **No hay sandbox en Pey: los pagos son reales.** Deja `PEY_MAX_AMOUNT_CENTS=1` mientras pruebas y súbelo solo cuando el flujo completo esté verificado.
+
+## WhatsApp Business
+
+Aplicar también `supabase/migrations/202611140002_whatsapp.sql` (tablas `whatsapp_messages` y `reminder_requests`).
+
+Flujo:
+
+1. Al crear un cobro para un cliente con celular **y con "Aceptó recibir cobros por WhatsApp"**, se manda la plantilla de cobro nuevo (después de responder al panel).
+2. "Pagar ahora" abre `/pagar/<token>`. "Prefiero QR" abre un intento QR en Pey y responde con la imagen del QR. "Más tarde" guarda una fila en `reminder_requests` (para mañana) y confirma por texto.
+3. Cuando `process_pey_payment` marca el cobro pagado, se manda "Pago recibido".
+4. Los estados de Meta (enviado, entregado, leído, falló) se guardan y el panel los muestra por cobro.
+
+Configuración en Meta for Developers:
+
+1. Crear una app tipo Business, agregar el producto WhatsApp y usar el número de prueba. Registrar ahí hasta 5 celulares destinatarios (los de la demo).
+2. Copiar el Phone number ID a `WHATSAPP_PHONE_NUMBER_ID`. Para el token, crear un usuario del sistema en Business Settings con permisos `whatsapp_business_messaging` y `whatsapp_business_management` y generar un token permanente (el temporal vence en 24 h) para `WHATSAPP_ACCESS_TOKEN`.
+3. App Settings → Basic → App Secret a `WHATSAPP_APP_SECRET`.
+4. WhatsApp → Configuration → Webhook: URL `https://TU-DOMINIO/api/webhooks/whatsapp`, Verify token igual a `WHATSAPP_VERIFY_TOKEN`; suscribir el campo `messages`.
+5. Plantillas (categoría Utility, idioma Español (MEX) `es_MX`), con los parámetros en este orden:
+   - Cobro nuevo y recordatorio: cuerpo con `{{1}}` cliente, `{{2}}` negocio, `{{3}}` concepto, `{{4}}` monto. Botones en este orden: 0 = URL "Pagar ahora" dinámica `https://TU-DOMINIO/pagar/{{1}}`, 1 = respuesta rápida "Más tarde", 2 = respuesta rápida "Prefiero QR".
+   - Pago recibido: cuerpo con `{{1}}` concepto, `{{2}}` monto, `{{3}}` negocio. Sin botones.
+
+El texto libre (respuestas, QR) solo llega si el cliente escribió o tocó un botón en las últimas 24 h; por eso "Pago recibido" usa plantilla cuando está configurada.
 
 ## Estructura
 
@@ -77,6 +106,10 @@ src/lib/pey.ts           cliente de Pey: QR y push
 src/lib/payment-validation.ts   firma del webhook, montos y contratos
 src/lib/attempts.ts      abrir un intento: reservar, llamar a Pey una vez, guardar
 src/app/api/webhooks/pey webhook firmado
+src/lib/whatsapp.ts      cliente de WhatsApp Cloud API: plantillas, texto, imagen
+src/lib/whatsapp-webhook.ts     firma X-Hub-Signature-256 y parseo de eventos de Meta
+src/lib/whatsapp-notify.ts      envíos al crear y pagar, respuestas a botones
+src/app/api/webhooks/whatsapp   webhook de Meta (handshake GET y eventos POST)
 src/app/api/pay/[token]  API pública del link de pago
 src/app/pagar/[token]    página pública de pago
 src/app/page.tsx         panel del comercio
