@@ -17,8 +17,8 @@ Incluye:
 
 Pendiente (en orden sugerido):
 
-1. **Verificar el push contra `docs.pey.mx/openapi.json`.** El endpoint `POST /codi/pn` y el evento `codi.pn.payment_received` están implementados con campos tomados de notas de otros equipos del hackatón, no de la referencia oficial. Buscar `POR VERIFICAR` en `src/lib`.
-2. Conciliación manual ("Verificar pago") para webhooks perdidos, consultando `GET /transaction/...` en Pey.
+1. ~~Verificar el push contra `docs.pey.mx/openapi.json`~~. Hecho: `POST /codi/pn` y `codi.pn.payment_received` coinciden con la referencia oficial (copia en `docs/pey-openapi.json`, versión 2026-10-20). Falta probarlo con un celular real.
+2. ~~Conciliación manual~~. Hecho: botón "Verificar pago" en el panel → `POST /api/dues/<id>/verify`, que consulta `GET /transaction/{id}` (push) o `GET /transaction/codi/qr/{id}` (QR) y registra el pago por `process_pey_payment` con `webhook_id` `reconcile:<transactionId>`.
 3. Cobros programados: la tabla `plans` existe, falta el job (Vercel Cron) que genera adeudos y recordatorios.
 4. WhatsApp Business API con botones ("Pagar ahora", "Más tarde", "Prefiero QR").
 5. Pantalla para resolver adeudos "Por revisar" y editar o dar de baja clientes.

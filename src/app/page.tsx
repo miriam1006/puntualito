@@ -7,6 +7,7 @@ type Customer = { id: string; name: string; phone: string | null; preferred_chan
 type Due = {
   id: string; concept: string; amount_cents: number; status: "open" | "paid" | "review" | "cancelled";
   public_token: string; created_at: string; customers: { id: string; name: string; phone: string | null } | null;
+  can_verify?: boolean;
 };
 type Session = { email: string; merchant: { id: string; name: string } | null };
 
@@ -20,6 +21,8 @@ export default function Dashboard() {
   const [dues, setDues] = useState<Due[]>([]);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState("");
+  const [verifying, setVerifying] = useState("");
+  const [verifyResult, setVerifyResult] = useState<{ dueId: string; text: string } | null>(null);
 
   const refresh = useCallback(async () => {
     const [c, d] = await Promise.all([clientApi("/api/customers"), clientApi("/api/dues")]);
@@ -64,6 +67,18 @@ export default function Dashboard() {
     try { await clientApi(`/api/dues/${due.id}/cancel`, { method: "POST", body: "{}" }); await refresh(); }
     catch (e) { setError(e instanceof Error ? e.message : "No se pudo cancelar."); }
   }
+  async function verify(due: Due) {
+    setError(""); setVerifyResult(null); setVerifying(due.id);
+    try {
+      const data = await clientApi(`/api/dues/${due.id}/verify`, { method: "POST", body: "{}" });
+      const text = data.due_status === "paid" ? "Pago confirmado con Pey."
+        : data.due_status === "review" ? "Pey reporta un pago que no coincide; quedó por revisar."
+        : "Pey todavía no reporta un pago para este cobro.";
+      setVerifyResult({ dueId: due.id, text });
+      await refresh();
+    } catch (e) { setError(e instanceof Error ? e.message : "No se pudo verificar el pago."); }
+    finally { setVerifying(""); }
+  }
   async function logout() {
     await clientApi("/api/auth/logout", { method: "POST", body: "{}" }).catch(() => {});
     window.location.assign("/login");
@@ -102,9 +117,15 @@ export default function Dashboard() {
                       <a className="button secondary" href={whatsappUrl(due)} target="_blank" rel="noreferrer">Enviar por WhatsApp</a>
                     )}
                     <button className="secondary" onClick={() => copyLink(due)}>{copied === due.id ? "Link copiado" : "Copiar link"}</button>
+                    {due.can_verify && (
+                      <button className="secondary" onClick={() => verify(due)} disabled={verifying === due.id}>
+                        {verifying === due.id ? "Verificando…" : "Verificar pago"}
+                      </button>
+                    )}
                     <button className="quiet" onClick={() => cancel(due)}>Cancelar</button>
                   </div>
                 )}
+                {verifyResult?.dueId === due.id && <p className="muted" role="status">{verifyResult.text}</p>}
                 {due.status === "review" && (
                   <p className="notice">Llegó un pago que no coincide (monto distinto o pago repetido). Revísalo en Pey.</p>
                 )}

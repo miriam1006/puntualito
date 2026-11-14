@@ -110,6 +110,27 @@ begin
   begin perform public.cancel_due(d.id, v_merchant, v_user); assert false, 'pagado no se cancela';
   exception when others then assert sqlerrm = 'invalid_due_state', sqlerrm; end;
 
+  -- 9. Conciliación manual ("Verificar pago"): mismo process_pey_payment con webhook_id
+  -- determinista por transacción. Repetirla y el webhook real posterior no duplican.
+  d5 := public.create_due(v_merchant, v_user, v_customer, 'Conciliado', 100);
+  r := public.open_attempt(d5.public_token, 'push');
+  push_id := (r->'attempt'->>'id')::uuid;
+  perform public.claim_attempt_creation(push_id);
+  perform public.finalize_attempt(push_id, 'TX-REC', null, '00000000000000000002');
+  r := public.process_pey_payment('reconcile:TX-REC',
+    '{"source":"pey_reconcile","type":"codi.pn.payment_received","transactionId":"TX-REC","amount":0.01,"datePaid":1790724758}',
+    'key_test', 'push', 'TX-REC', null, 'TX-REC', 100, to_timestamp(1790724758));
+  assert r->>'outcome' in ('paid', 'paid_late'), r::text;
+  assert (select status from public.dues where id = d5.id) = 'paid', 'conciliado pagado';
+  r := public.process_pey_payment('reconcile:TX-REC',
+    '{"datePaid":1790724758,"amount":0.01,"transactionId":"TX-REC","type":"codi.pn.payment_received","source":"pey_reconcile"}',
+    'key_test', 'push', 'TX-REC', null, 'TX-REC', 100, to_timestamp(1790724758));
+  assert r->>'outcome' = 'duplicate', r::text;
+  r := public.process_pey_payment('wh-rec', '{"type":"codi.pn.payment_received"}', 'key_test', 'push', 'TX-REC',
+    null, 'TX-REC', 100, to_timestamp(1790724758));
+  assert r->>'outcome' = 'duplicate_transaction', r::text;
+  assert (select count(*) from public.payment_receipts where due_id = d5.id) = 1, 'un solo recibo conciliado';
+
   raise notice 'payment_flow: todas las comprobaciones pasaron';
 end $$;
 
