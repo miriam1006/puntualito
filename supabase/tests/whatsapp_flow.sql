@@ -1,5 +1,5 @@
 -- Prueba de la migración de WhatsApp. Corre en una transacción y termina con ROLLBACK: no deja datos.
--- Ejecutar después de aplicar 202611140001_initial.sql y 202611140002_whatsapp.sql.
+-- Ejecutar después de aplicar todas las migraciones (202611140001_initial.sql, 202611140002_review_and_plans.sql y 202611140003_whatsapp.sql).
 begin;
 
 do $$

@@ -1,5 +1,5 @@
 -- Prueba de "Por revisar", edición de clientes y cobros programados.
--- Corre en una transacción y termina con ROLLBACK: no deja datos. Requiere ambas migraciones.
+-- Corre en una transacción y termina con ROLLBACK: no deja datos. Requiere todas las migraciones.
 begin;
 
 do $$

@@ -84,7 +84,7 @@ npm run dev
 
 ## WhatsApp Business
 
-Aplicar también `supabase/migrations/202611140002_whatsapp.sql` (tablas `whatsapp_messages` y `reminder_requests`).
+Aplicar también `supabase/migrations/202611140003_whatsapp.sql` (tablas `whatsapp_messages` y `reminder_requests`).
 
 Flujo:
 
@@ -137,7 +137,7 @@ npm test
 npm run build
 
 # SQL en un Postgres local (no Supabase): stubs, migraciones en orden y pruebas (terminan en ROLLBACK)
-for f in supabase/tests/local_stubs.sql supabase/migrations/*.sql supabase/tests/payment_flow.sql supabase/tests/review_and_plans.sql; do
+for f in supabase/tests/local_stubs.sql supabase/migrations/*.sql supabase/tests/payment_flow.sql supabase/tests/review_and_plans.sql supabase/tests/whatsapp_flow.sql; do
   psql -v ON_ERROR_STOP=1 -d puntualito_test -f "$f" || break
 done
 ```

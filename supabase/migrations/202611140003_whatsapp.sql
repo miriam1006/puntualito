@@ -1,5 +1,5 @@
 -- Puntualito: mensajes de WhatsApp Business (Cloud API) y recordatorios pedidos por el cliente.
--- Aplicar después de 202611140001_initial.sql. Igual que el resto: RLS activo y sin políticas.
+-- Aplicar después de 202611140001_initial.sql y 202611140002_review_and_plans.sql. Igual que el resto: RLS activo y sin políticas.
 begin;
 
 create table public.whatsapp_messages (
