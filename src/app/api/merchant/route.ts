@@ -9,8 +9,8 @@ export async function POST(request: Request) {
     sameOrigin(request);
     const { user, admin, merchant } = await access();
     if (merchant) throw new ApiError(409, "Tu comercio ya existe.");
-    const apiKeyId = process.env.PEY_API_KEY_ID;
-    if (!apiKeyId) throw new ApiError(503, "Falta configurar PEY_API_KEY_ID en el servidor.");
+    // Sin PEY_API_KEY_ID el comercio se crea sin ligar; access() o el primer webhook firmado lo ligan.
+    const apiKeyId = process.env.PEY_API_KEY_ID?.trim() || null;
     const input = z.strictObject({ name: z.string().trim().min(1).max(100) }).safeParse(await jsonBody(request));
     if (!input.success) throw new ApiError(400, "Escribe el nombre de tu negocio.");
     const { data, error } = await admin.from("merchants")

@@ -27,8 +27,8 @@ async function readLimitedBody(request: Request): Promise<string> {
 
 export async function POST(request: Request) {
   const secret = process.env.PEY_WEBHOOK_SECRET;
-  const expectedApiKeyId = process.env.PEY_API_KEY_ID;
-  if (!secret || !expectedApiKeyId) {
+  const expectedApiKeyId = process.env.PEY_API_KEY_ID?.trim() || null;
+  if (!secret) {
     console.error("pey_webhook_rejected", { reason: "configuration_missing", status: 503 });
     return respond(503, { error: "Webhook sin configurar." });
   }
@@ -77,9 +77,15 @@ export async function POST(request: Request) {
       transactionId: p.transactionId, amount: p.amount, datePaid: p.datePaid };
   } else {
     // Otros eventos firmados (por ejemplo bank.account.updated) no cambian cobros.
+    const event = verified as { ownerType?: unknown; ownerId?: unknown };
+    if (!expectedApiKeyId && type === "bank.account.updated" && event.ownerType === "API_KEY" && typeof event.ownerId === "string") {
+      console.warn(`PEY_API_KEY_ID no configurado; apiKeyId recibido: ${event.ownerId.slice(0, 128)}`, { webhookId: id, type });
+    }
     console.info("pey_webhook_ignored", { webhookId: id, reason: "unsupported_event_type" });
     return respond(200, { received: true, ignored: true });
   }
+
+  if (!expectedApiKeyId) return holdPayment(id, payment);
 
   if (payment.apiKeyId !== expectedApiKeyId) {
     console.warn("pey_webhook_rejected", { webhookId: id, reason: "api_key_id_mismatch", status: 401 });
@@ -114,6 +120,28 @@ export async function POST(request: Request) {
     console.error("pey_webhook_processing_failed", { webhookId: id });
     return respond(503, { error: "No se pudo procesar el pago." });
   }
+}
+
+/** Sin PEY_API_KEY_ID no se marca nada como pagado: el evento firmado queda guardado y se
+ * responde 503 para que Pey reintente cuando la variable ya esté configurada. */
+async function holdPayment(webhookId: string, payment: {
+  kind: "qr" | "push"; payload: Record<string, unknown>; apiKeyId: string; peyRef: string;
+}) {
+  console.warn(`PEY_API_KEY_ID no configurado; apiKeyId recibido: ${payment.apiKeyId}`, { webhookId, kind: payment.kind });
+  try {
+    const { data, error } = await createAdminClient().rpc("hold_pey_payment", {
+      p_webhook_id: webhookId,
+      p_payload: payment.payload,
+      p_pey_api_key_id: payment.apiKeyId,
+      p_kind: payment.kind,
+      p_pey_ref: payment.peyRef,
+    });
+    if (error) console.error("pey_webhook_hold_failed", { webhookId, code: error.code });
+    else console.warn("pey_webhook_held", { webhookId, reason: "api_key_id_not_configured", binding: data?.binding });
+  } catch {
+    console.error("pey_webhook_hold_failed", { webhookId });
+  }
+  return respond(503, { error: "Pago pendiente: falta configurar PEY_API_KEY_ID." });
 }
 
 function invalidContract(webhookId: string, fields: string[]) {

@@ -16,8 +16,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!z.uuid().safeParse(id).success) throw new ApiError(400, "Identificador inválido.");
     const { admin, merchant } = await merchantAccess();
 
-    const apiKeyId = process.env.PEY_API_KEY_ID;
-    if (!apiKeyId) throw new ApiError(503, "Falta configurar Pey en el servidor.");
+    const apiKeyId = process.env.PEY_API_KEY_ID?.trim();
+    if (!apiKeyId) throw new ApiError(503, "Falta configurar PEY_API_KEY_ID en el servidor. Búscalo en los logs del webhook de Pey (\"apiKeyId recibido\").");
     if (merchant.pey_api_key_id !== apiKeyId) throw new ApiError(409, "La API key de Pey configurada no corresponde a este negocio.");
 
     const { data: due, error: dueError } = await admin.from("dues").select("id,status")

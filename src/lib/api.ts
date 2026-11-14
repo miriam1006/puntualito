@@ -24,8 +24,22 @@ export async function access() {
     if (!bootstrapEmail || user.email?.toLowerCase() !== bootstrapEmail) {
       throw new ApiError(403, "Tu usuario no tiene acceso a un negocio.");
     }
+  } else if (!merchant.pey_api_key_id) {
+    await bindConfiguredApiKey(admin, merchant);
   }
   return { user, admin, client, merchant: merchant as Record<string, any> | null };
+}
+
+/** Liga PEY_API_KEY_ID a un comercio creado antes de conocerlo. Nunca reemplaza uno ya ligado. */
+async function bindConfiguredApiKey(admin: ReturnType<typeof createAdminClient>, merchant: Record<string, any>) {
+  const apiKeyId = process.env.PEY_API_KEY_ID?.trim();
+  if (!apiKeyId) return;
+  const { data, error } = await admin.rpc("bind_pey_api_key_id", {
+    p_merchant_id: merchant.id, p_pey_api_key_id: apiKeyId, p_actor: "server_config",
+  });
+  if (error) { console.error("pey_api_key_bind_failed", { merchantId: merchant.id, code: error.code }); return; }
+  if (data === "bound" || data === "already_bound") merchant.pey_api_key_id = apiKeyId;
+  else console.warn("pey_api_key_bind_skipped", { merchantId: merchant.id, outcome: data });
 }
 
 /** Igual que access(), pero exige que el comercio ya exista. */

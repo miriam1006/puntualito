@@ -70,7 +70,7 @@ npm run dev
 | `OWNER_EMAIL` | Correo autorizado para crear el primer comercio |
 | `APP_URL` | Origen del despliegue; se usa para validar el origen de las peticiones |
 | `PEY_API_KEY` | Clave secreta de Pey |
-| `PEY_API_KEY_ID` | Identificador de esa key (campo `apiKeyId` en los Webhook Logs de Pey) |
+| `PEY_API_KEY_ID` | Identificador de esa key (`apiKeyId`). Puede quedar vacía al inicio (ver abajo) |
 | `PEY_WEBHOOK_SECRET` | Secreto de Standard Webhooks |
 | `PEY_MAX_AMOUNT_CENTS` | Tope por cobro en centavos. **Si falta, es 1 ($0.01).** |
 | `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN` | Número de WhatsApp y token de Meta. Si falta alguno, no se envía nada (queda `wa.me`) |
@@ -79,6 +79,15 @@ npm run dev
 | `WHATSAPP_TEMPLATE_NEW_DUE`, `WHATSAPP_TEMPLATE_REMINDER`, `WHATSAPP_TEMPLATE_PAYMENT_RECEIVED` | Nombres de plantillas aprobadas. Sin la de cobro nuevo no se envía el cobro; sin la de pago recibido se manda texto (solo llega dentro de las 24 h) |
 | `WHATSAPP_TEMPLATE_LANGUAGE` | Idioma de las plantillas; por omisión `es_MX`. Opcional: `WHATSAPP_GRAPH_VERSION` (por omisión `v23.0`) |
 | `CRON_SECRET` | Protege `/api/cron/generate-dues`; Vercel Cron lo envía solo |
+
+**`PEY_API_KEY_ID` sin configurar.** El portal de Pey no muestra el `apiKeyId` y ningún endpoint de la API lo devuelve; solo llega en los webhooks firmados (`codi.qr.payment_received`, `codi.pn.payment_received`, y como `ownerId` en `bank.account.updated`). Por eso, sin esa variable:
+
+- Se puede crear el negocio (queda sin `pey_api_key_id`) y crear cobros, QR y push.
+- El webhook sigue exigiendo la firma (`PEY_WEBHOOK_SECRET`). Con la firma válida escribe en los logs `PEY_API_KEY_ID no configurado; apiKeyId recibido: ...`, guarda el evento en `webhook_events` (`outcome = 'held'`), liga ese `apiKeyId` al negocio dueño del intento si aún no tenía uno, y responde 503 **sin marcar el cobro como pagado**, para que Pey reintente.
+- Copia ese valor a `PEY_API_KEY_ID` en Vercel y redespliega. El siguiente reintento de Pey o "Verificar pago" registra el pago. Si el negocio se creó sin ID, se liga a `PEY_API_KEY_ID` en cuanto el dueño abre el panel.
+- Un negocio ya ligado nunca cambia de `apiKeyId`; con la variable configurada, un webhook con otro `apiKeyId` se rechaza (401) y "Verificar pago" exige que coincidan.
+
+Requiere la migración `202611140004_pey_api_key_optional.sql`.
 
 **No hay sandbox en Pey: los pagos son reales.** Deja `PEY_MAX_AMOUNT_CENTS=1` mientras pruebas y súbelo solo cuando el flujo completo esté verificado.
 
@@ -137,7 +146,7 @@ npm test
 npm run build
 
 # SQL en un Postgres local (no Supabase): stubs, migraciones en orden y pruebas (terminan en ROLLBACK)
-for f in supabase/tests/local_stubs.sql supabase/migrations/*.sql supabase/tests/payment_flow.sql supabase/tests/review_and_plans.sql supabase/tests/whatsapp_flow.sql; do
+for f in supabase/tests/local_stubs.sql supabase/migrations/*.sql supabase/tests/payment_flow.sql supabase/tests/review_and_plans.sql supabase/tests/whatsapp_flow.sql supabase/tests/pey_api_key_binding.sql; do
   psql -v ON_ERROR_STOP=1 -d puntualito_test -f "$f" || break
 done
 ```
