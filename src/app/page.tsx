@@ -2,6 +2,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { clientApi } from "@/lib/client-api";
 import { formatCents, parsePesosToCents } from "@/lib/phone";
+import { AppHeader } from "@/components/AppHeader";
+import { ScheduledSummary } from "@/components/ScheduledSummary";
 
 type Customer = { id: string; name: string; phone: string | null; preferred_channel: string };
 type Due = {
@@ -46,6 +48,7 @@ export default function Dashboard() {
 
   const paid = dues.filter(d => d.status === "paid");
   const open = dues.filter(d => d.status === "open");
+  const review = dues.filter(d => d.status === "review");
   const sum = (list: Due[]) => list.reduce((total, d) => total + d.amount_cents, 0);
   const linkFor = (due: Due) => `${window.location.origin}/pagar/${due.public_token}`;
   const merchantName = session.merchant.name;
@@ -64,24 +67,20 @@ export default function Dashboard() {
     try { await clientApi(`/api/dues/${due.id}/cancel`, { method: "POST", body: "{}" }); await refresh(); }
     catch (e) { setError(e instanceof Error ? e.message : "No se pudo cancelar."); }
   }
-  async function logout() {
-    await clientApi("/api/auth/logout", { method: "POST", body: "{}" }).catch(() => {});
-    window.location.assign("/login");
-  }
-
   return (
     <main>
-      <div className="topbar">
-        <span className="brand">Puntualito<span>.</span> <span className="muted">{merchantName}</span></span>
-        <button className="quiet" onClick={logout}>Salir</button>
-      </div>
+      <AppHeader merchantName={merchantName} active="panel" reviewCount={review.length} />
 
       <div className="stats">
-        <div className="stat"><span className="muted">Cobrado</span><strong>{formatCents(sum(paid))}</strong><span className="muted">{paid.length} pagos</span></div>
-        <div className="stat"><span className="muted">Pendiente</span><strong>{formatCents(sum(open))}</strong><span className="muted">{open.length} cobros</span></div>
+        <div className="stat paid"><span className="muted">Cobrado</span><strong>{formatCents(sum(paid))}</strong><span className="muted">{paid.length} pagos</span></div>
+        <div className="stat open"><span className="muted">Pendiente</span><strong>{formatCents(sum(open))}</strong><span className="muted">{open.length} cobros</span></div>
+        {review.length > 0 && (
+          <a className="stat review" href="/revisar"><span className="muted">Por revisar</span><strong>{review.length}</strong><span className="muted">Resolver ahora →</span></a>
+        )}
       </div>
 
       <NewDue customers={customers} onCreated={refresh} />
+      <ScheduledSummary onGenerated={refresh} />
 
       <section className="card">
         <h2>Cobros</h2>
@@ -106,7 +105,7 @@ export default function Dashboard() {
                   </div>
                 )}
                 {due.status === "review" && (
-                  <p className="notice">Llegó un pago que no coincide (monto distinto o pago repetido). Revísalo en Pey.</p>
+                  <p className="notice">Llegó un pago que no coincide (monto distinto o pago repetido). <a className="link" href="/revisar">Resolver</a></p>
                 )}
               </li>
             ))}
@@ -248,6 +247,7 @@ function Customers({ customers, onCreated }: { customers: Customer[]; onCreated:
           ))}
         </ul>
       )}
+      <p className="muted" style={{ marginTop: 12 }}>Para editar, dar de baja o programar cobros, ve a <a className="link" href="/clientes">Clientes y planes</a>.</p>
     </section>
   );
 }
