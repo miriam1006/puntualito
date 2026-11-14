@@ -1,10 +1,8 @@
-# Puntual
+# Puntualito
 
 Cobranza con CoDi para negocios pequeños (gimnasios, escuelas, talleres, consultorios), a través de la API de Pey.
 
-El comercio crea un cobro, lo comparte como link y el cliente lo paga con QR o con una notificación en la app de su banco. El dinero va directo a la cuenta del negocio; Puntual nunca lo toca.
-
-> "Puntual" es un nombre provisional. Para cambiarlo: `package.json`, `src/app/layout.tsx` y los textos de marca en `src/app`.
+El comercio crea un cobro, lo comparte como link y el cliente lo paga con QR o con una notificación en la app de su banco. El dinero va directo a la cuenta del negocio; Puntualito nunca lo toca.
 
 ## Estado
 

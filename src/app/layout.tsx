@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Puntual",
+  title: "Puntualito",
   description: "Cobranza con CoDi para negocios pequeños.",
 };
 export const viewport: Viewport = { width: "device-width", initialScale: 1 };

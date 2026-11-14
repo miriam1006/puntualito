@@ -26,7 +26,7 @@ export default function Login() {
 
   return (
     <main className="narrow">
-      <div className="topbar"><span className="brand">Puntual<span>.</span></span></div>
+      <div className="topbar"><span className="brand">Puntualito<span>.</span></span></div>
       <section className="card">
         <h1>Entra a tu negocio</h1>
         <p className="muted">Cobra con CoDi y lleva el control de quién ya pagó.</p>

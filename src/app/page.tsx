@@ -72,7 +72,7 @@ export default function Dashboard() {
   return (
     <main>
       <div className="topbar">
-        <span className="brand">Puntual<span>.</span> <span className="muted">{merchantName}</span></span>
+        <span className="brand">Puntualito<span>.</span> <span className="muted">{merchantName}</span></span>
         <button className="quiet" onClick={logout}>Salir</button>
       </div>
 
@@ -133,7 +133,7 @@ function CreateMerchant({ onCreated }: { onCreated: (merchant: { id: string; nam
   }
   return (
     <main className="narrow">
-      <div className="topbar"><span className="brand">Puntual<span>.</span></span></div>
+      <div className="topbar"><span className="brand">Puntualito<span>.</span></span></div>
       <form className="card" onSubmit={submit}>
         <h1>Crea tu negocio</h1>
         <p className="muted">Así lo verán tus clientes cuando les llegue un cobro.</p>

@@ -1,4 +1,4 @@
--- Puntual: esquema inicial.
+-- Puntualito: esquema inicial.
 -- Aplicar en el SQL Editor de un proyecto NUEVO de Supabase.
 -- Todo el acceso pasa por el servidor con la clave de servicio; el navegador
 -- nunca lee ni escribe estas tablas directamente (RLS activo y sin políticas).
