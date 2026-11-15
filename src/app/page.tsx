@@ -25,6 +25,7 @@ export default function Dashboard() {
   const [error, setError] = useState("");
   const [copied, setCopied] = useState("");
   const [verifying, setVerifying] = useState("");
+  const [pushing, setPushing] = useState("");
   const [verifyResult, setVerifyResult] = useState<{ dueId: string; text: string } | null>(null);
   const [messagesByDue, setMessagesByDue] = useState<Record<string, WhatsAppMessage[]>>({});
 
@@ -76,6 +77,15 @@ export default function Dashboard() {
     try { await clientApi(`/api/dues/${due.id}/cancel`, { method: "POST", body: "{}" }); await refresh(); }
     catch (e) { setError(e instanceof Error ? e.message : "No se pudo cancelar."); }
   }
+  async function pushNow(due: Due) {
+    setError(""); setVerifyResult(null); setPushing(due.id);
+    try {
+      const data = await clientApi(`/api/dues/${due.id}/push`, { method: "POST", body: "{}" });
+      setVerifyResult({ dueId: due.id, text: data.text });
+      await refresh();
+    } catch (e) { setError(e instanceof Error ? e.message : "No se pudo mandar la notificación."); }
+    finally { setPushing(""); }
+  }
   async function verify(due: Due) {
     setError(""); setVerifyResult(null); setVerifying(due.id);
     try {
@@ -119,6 +129,11 @@ export default function Dashboard() {
                     <WhatsAppHistory messages={messagesByDue[due.id]} />
                     {due.status === "open" && (
                       <div className="due-actions">
+                        {due.customers?.phone && (
+                          <button onClick={() => pushNow(due)} disabled={pushing === due.id}>
+                            {pushing === due.id ? "Enviando…" : "Cobrar ahora"}
+                          </button>
+                        )}
                         <a className="button" href={`/chat/${due.public_token}`} target="_blank" rel="noreferrer">Ver chat de WhatsApp</a>
                         <a className="button" href={`/pagar/${due.public_token}`} target="_blank" rel="noreferrer">Mostrar QR</a>
                         {due.customers?.phone && (
@@ -184,37 +199,91 @@ function CreateMerchant({ onCreated }: { onCreated: (merchant: { id: string; nam
   );
 }
 
+const NEW_CUSTOMER = "new";
+
+/** Alta rápida: elige un cliente o crea uno nuevo aquí mismo y, si tiene celular, manda el push
+ * CoDi en el mismo paso ("Crear y cobrar ahora") sin pasar por Clientes ni por el chat. */
 function NewDue({ customers, onCreated }: { customers: Customer[]; onCreated: () => Promise<void> }) {
-  const [customerId, setCustomerId] = useState("");
+  const [customerId, setCustomerId] = useState(NEW_CUSTOMER);
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [optIn, setOptIn] = useState(true);
   const [concept, setConcept] = useState("");
   const [amount, setAmount] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [result, setResult] = useState<{ text: string; token: string; ok: boolean } | null>(null);
+
+  const isNew = customerId === NEW_CUSTOMER;
+  const selected = customers.find(c => c.id === customerId);
+  const canPush = isNew ? phone.replace(/\D/g, "").length >= 10 : Boolean(selected?.phone);
+
   async function submit(event: FormEvent) {
     event.preventDefault();
+    const pushNow = (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value") === "push";
     const cents = parsePesosToCents(amount);
     if (!cents) { setError("Escribe un monto válido, por ejemplo 350 o 350.50."); return; }
-    setBusy(true); setError("");
+    setBusy(pushNow ? "push" : "create"); setError(""); setResult(null);
     try {
-      await clientApi("/api/dues", {
-        method: "POST",
-        body: JSON.stringify({ customer_id: customerId || null, concept: concept.trim(), amount_cents: cents }),
+      let id: string | null = customerId || null;
+      if (isNew) {
+        const data = await clientApi("/api/customers", {
+          method: "POST", body: JSON.stringify({ name: name.trim(), phone, whatsapp_opt_in: optIn }),
+        });
+        id = data.customer.id;
+        // Si el cobro falla después, el cliente ya existe: queda seleccionado para no duplicarlo.
+        setCustomerId(data.customer.id); setName(""); setPhone("");
+      }
+      const { due } = await clientApi("/api/dues", {
+        method: "POST", body: JSON.stringify({ customer_id: id, concept: concept.trim(), amount_cents: cents }),
       });
       setConcept(""); setAmount("");
+      if (pushNow) {
+        try {
+          const push = await clientApi(`/api/dues/${due.id}/push`, { method: "POST", body: "{}" });
+          setResult({ text: push.text, token: due.public_token, ok: push.sent });
+        } catch (e) {
+          setResult({ text: `El cobro se creó, pero no se mandó la notificación: ${e instanceof Error ? e.message : "intenta de nuevo"}`, token: due.public_token, ok: false });
+        }
+      } else {
+        setResult({ text: "Cobro creado.", token: due.public_token, ok: true });
+      }
       await onCreated();
-    } catch (e) { setError(e instanceof Error ? e.message : "No se pudo crear el cobro."); }
-    finally { setBusy(false); }
+    } catch (e) { setError(e instanceof Error ? e.message : "No se pudo crear el cobro."); await onCreated().catch(() => {}); }
+    finally { setBusy(""); }
   }
+
   return (
     <form className="card" onSubmit={submit}>
       <h2>Nuevo cobro</h2>
       <div className="field">
         <label htmlFor="due-customer">Cliente</label>
-        <select id="due-customer" value={customerId} onChange={e => setCustomerId(e.target.value)}>
+        <select id="due-customer" value={customerId} onChange={e => { setCustomerId(e.target.value); setResult(null); }}>
+          <option value={NEW_CUSTOMER}>+ Cliente nuevo</option>
+          {customers.map(c => <option key={c.id} value={c.id}>{c.name}{c.phone ? "" : " (sin celular)"}</option>)}
           <option value="">Sin cliente (cobro en mostrador)</option>
-          {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </div>
+      {isNew && (
+        <div className="new-customer">
+          <div className="row due-row">
+            <div className="field">
+              <label htmlFor="due-new-name">Nombre</label>
+              <input id="due-new-name" required maxLength={100} placeholder="Ana López" autoComplete="off"
+                value={name} onChange={e => setName(e.target.value)} />
+            </div>
+            <div className="field">
+              <label htmlFor="due-new-phone">Celular (10 dígitos)</label>
+              <input id="due-new-phone" inputMode="tel" maxLength={30} placeholder="55 1234 5678" autoComplete="off"
+                value={phone} onChange={e => setPhone(e.target.value)} />
+            </div>
+          </div>
+          <label className="check">
+            <input type="checkbox" checked={optIn} onChange={e => setOptIn(e.target.checked)} />
+            Aceptó recibir cobros por WhatsApp
+          </label>
+        </div>
+      )}
       <div className="row due-row">
         <div className="field">
           <label htmlFor="due-concept">Concepto</label>
@@ -230,7 +299,22 @@ function NewDue({ customers, onCreated }: { customers: Customer[]; onCreated: ()
           </div>
         </div>
       </div>
-      <button type="submit" disabled={busy}>Crear cobro</button>
+      <div className="form-actions">
+        {canPush && (
+          <button type="submit" value="push" disabled={Boolean(busy)}>
+            {busy === "push" ? "Enviando…" : "Crear y cobrar ahora"}
+          </button>
+        )}
+        <button type="submit" value="create" className={canPush ? "secondary" : undefined} disabled={Boolean(busy)}>
+          {busy === "create" ? "Creando…" : canPush ? "Solo crear" : "Crear cobro"}
+        </button>
+      </div>
+      {canPush && <p className="muted hint">«Cobrar ahora» manda la notificación CoDi a la app del banco del cliente.</p>}
+      {result && (
+        <p className={result.ok ? "success" : "error"} role="status">
+          {result.text} <a className="link" href={`/chat/${result.token}`} target="_blank" rel="noreferrer">Ver chat</a>
+        </p>
+      )}
       {error && <p className="error" role="alert">{error}</p>}
     </form>
   );
