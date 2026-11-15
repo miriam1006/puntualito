@@ -3,7 +3,6 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { clientApi } from "@/lib/client-api";
 import { formatCents, parsePesosToCents } from "@/lib/phone";
 import { AppHeader } from "@/components/AppHeader";
-import { ScheduledSummary } from "@/components/ScheduledSummary";
 import { groupByDue, WhatsAppHistory, type WhatsAppMessage } from "./WhatsAppHistory";
 
 type Customer = { id: string; name: string; phone: string | null; preferred_channel: string };
@@ -161,7 +160,6 @@ export default function Dashboard() {
 
         <div>
           <NewDue customers={customers} onCreated={refresh} />
-          <ScheduledSummary />
         </div>
       </div>
     </main>
@@ -269,12 +267,12 @@ function NewDue({ customers, onCreated }: { customers: Customer[]; onCreated: ()
           <div className="row due-row">
             <div className="field">
               <label htmlFor="due-new-name">Nombre</label>
-              <input id="due-new-name" required maxLength={100} placeholder="Ana López" autoComplete="off"
+              <input id="due-new-name" required maxLength={100} placeholder="Ej. Ana López" autoComplete="off"
                 value={name} onChange={e => setName(e.target.value)} />
             </div>
             <div className="field">
               <label htmlFor="due-new-phone">Celular (10 dígitos)</label>
-              <input id="due-new-phone" inputMode="tel" maxLength={30} placeholder="55 1234 5678" autoComplete="off"
+              <input id="due-new-phone" inputMode="tel" maxLength={30} placeholder="Ej. 55 1234 5678" autoComplete="off"
                 value={phone} onChange={e => setPhone(e.target.value)} />
             </div>
           </div>
@@ -287,14 +285,14 @@ function NewDue({ customers, onCreated }: { customers: Customer[]; onCreated: ()
       <div className="row due-row">
         <div className="field">
           <label htmlFor="due-concept">Concepto</label>
-          <input id="due-concept" required maxLength={100} placeholder="Mensualidad noviembre"
+          <input id="due-concept" required maxLength={100} placeholder="Ej. Mensualidad noviembre"
             value={concept} onChange={e => setConcept(e.target.value)} />
         </div>
         <div className="field">
           <label htmlFor="due-amount">Monto (MXN)</label>
           <div className="money-input">
             <span aria-hidden="true">$</span>
-            <input id="due-amount" required inputMode="decimal" placeholder="350.00"
+            <input id="due-amount" required inputMode="decimal" placeholder="0.00"
               value={amount} onChange={e => setAmount(e.target.value)} />
           </div>
         </div>

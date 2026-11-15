@@ -189,7 +189,7 @@ function NewPlan({ customer, onCreated }: { customer: Customer; onCreated: () =>
         </div>
         <div className="field">
           <label htmlFor={`plan-amount-${customer.id}`}>Monto (MXN)</label>
-          <input id={`plan-amount-${customer.id}`} required inputMode="decimal" placeholder="0.01" value={amount} onChange={e => setAmount(e.target.value)} />
+          <input id={`plan-amount-${customer.id}`} required inputMode="decimal" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} />
         </div>
       </div>
       <div className="row">
