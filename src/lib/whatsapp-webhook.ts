@@ -146,7 +146,8 @@ export function parseWhatsAppWebhook(body: unknown, phoneNumberId?: string): Wha
 export function buttonActionFromText(text: string | null): ButtonAction | null {
   const normalized = (text ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
   if (normalized === "pagar ahora") return "pay_now";
-  if (normalized === "prefiero qr") return "pay_qr";
+  // "Prefiero QR" era el botón de la plantilla anterior: sigue funcionando en mensajes ya enviados.
+  if (normalized === "enviar qr" || normalized === "prefiero qr") return "pay_qr";
   if (normalized === "mas tarde") return "pay_later";
   return null;
 }

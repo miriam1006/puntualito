@@ -64,8 +64,8 @@ export type DueTemplateInput = {
 };
 
 /** Plantilla de cobro (nuevo o recordatorio). Debe estar registrada en Meta con:
- * cuerpo {{1}} cliente, {{2}} negocio, {{3}} concepto, {{4}} monto; tres respuestas rápidas en este orden:
- * 0 "Pagar ahora" (manda el push de CoDi), 1 "Más tarde", 2 "Prefiero QR". El cliente no abre ningún link. */
+ * cuerpo {{1}} cliente, {{2}} negocio, {{3}} concepto, {{4}} monto; dos respuestas rápidas en este orden:
+ * 0 "Pagar ahora" (manda el push de CoDi) y 1 "Más tarde". El QR solo se ofrece como respaldo, en el chat. */
 export function dueTemplatePayload(input: DueTemplateInput) {
   if (!/^[0-9a-f-]{36}$/.test(input.dueId)) throw new Error("invalid_due");
   const quickReply = (index: number, action: ButtonAction) => ({
@@ -88,7 +88,6 @@ export function dueTemplatePayload(input: DueTemplateInput) {
         },
         quickReply(0, "pay_now"),
         quickReply(1, "pay_later"),
-        quickReply(2, "pay_qr"),
       ],
     },
   };
@@ -123,7 +122,7 @@ export function textPayload(to: string, body: string) {
 }
 
 export const BUTTON_TITLES: Record<ButtonAction, string> = {
-  pay_now: "Pagar ahora", pay_later: "Más tarde", pay_qr: "Prefiero QR",
+  pay_now: "Pagar ahora", pay_later: "Más tarde", pay_qr: "Enviar QR",
 };
 
 /** Mensaje con botones de respuesta (máx. 3). Como el texto libre, solo llega dentro de las 24 h

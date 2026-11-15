@@ -102,6 +102,7 @@ test("payload de botones: solo acciones conocidas con id de adeudo", () => {
   for (const bad of [null, "", "pay_qr", `pay_push:${DUE_ID}`, `pay_qr:${DUE_ID}x`, "pay_qr:../../x"]) {
     assert.equal(parseButtonPayload(bad), null, String(bad));
   }
+  assert.equal(buttonActionFromText("Enviar QR"), "pay_qr");
   assert.equal(buttonActionFromText("Prefiero QR"), "pay_qr");
   assert.equal(buttonActionFromText(" mas tarde "), "pay_later");
   assert.equal(buttonActionFromText("Más tarde"), "pay_later");
@@ -115,7 +116,7 @@ test("respuesta con botones: ids con el adeudo y títulos válidos para WhatsApp
   assert.equal(payload.type, "interactive");
   assert.deepEqual(payload.interactive.action.buttons, [
     { type: "reply", reply: { id: `pay_now:${DUE_ID}`, title: "Pagar ahora" } },
-    { type: "reply", reply: { id: `pay_qr:${DUE_ID}`, title: "Prefiero QR" } },
+    { type: "reply", reply: { id: `pay_qr:${DUE_ID}`, title: "Enviar QR" } },
   ]);
   for (const button of payload.interactive.action.buttons) assert.ok(button.reply.title.length <= 20);
 });
@@ -130,17 +131,17 @@ test("configuración: sin número o token es no-op", () => {
   assert.equal(c?.templates.paymentReceived, undefined);
 });
 
-test("plantilla de cobro: tres respuestas rápidas con el adeudo, sin link", () => {
+test("plantilla de cobro: «Pagar ahora» y «Más tarde» con el adeudo, sin link ni QR", () => {
   const payload = dueTemplatePayload({
     to: "5512345678", template: "cobro_nuevo", language: "es_MX", customerName: "Ana\nLópez",
     merchantName: "Gimnasio", concept: "Mensualidad", amount: "$600.00", dueId: DUE_ID,
   });
   assert.equal(payload.to, "525512345678");
-  const [body, now, later, qr] = payload.template.components;
+  assert.equal(payload.template.components.length, 3);
+  const [body, now, later] = payload.template.components;
   assert.deepEqual(body.parameters.map(p => "text" in p ? p.text : null), ["Ana López", "Gimnasio", "Mensualidad", "$600.00"]);
   assert.deepEqual(now, { type: "button", sub_type: "quick_reply", index: "0", parameters: [{ type: "payload", payload: `pay_now:${DUE_ID}` }] });
-  assert.deepEqual(later.parameters, [{ type: "payload", payload: `pay_later:${DUE_ID}` }]);
-  assert.deepEqual(qr.parameters, [{ type: "payload", payload: `pay_qr:${DUE_ID}` }]);
+  assert.deepEqual(later, { type: "button", sub_type: "quick_reply", index: "1", parameters: [{ type: "payload", payload: `pay_later:${DUE_ID}` }] });
   assert.ok(!JSON.stringify(payload).includes("/pagar/"));
   assert.throws(() => dueTemplatePayload({
     to: "5512345678", template: "t", language: "es_MX", customerName: "", merchantName: "", concept: "", amount: "",

@@ -14,7 +14,7 @@ Incluye:
 - Adeudos (`dues`) separados de intentos (`attempts`), con **un solo intento vivo por adeudo**.
 - Link público de pago `/pagar/<token>`: QR o push, con estado en vivo.
 - Panel del comercio: clientes, crear cobro, lista de pagados y pendientes, historial de WhatsApp por cobro y botón `wa.me` de respaldo.
-- WhatsApp Business (Cloud API): plantilla con "Pagar ahora", "Más tarde" y "Prefiero QR" al crear el cobro, QR por WhatsApp, "Pago recibido" y estados de entrega. Ver "WhatsApp Business".
+- WhatsApp Business (Cloud API): plantilla con "Pagar ahora" (push de CoDi) y "Más tarde" al crear el cobro, QR por WhatsApp como respaldo, "Pago recibido" y estados de entrega. Ver "WhatsApp Business".
 
 Pendiente (en orden sugerido):
 
@@ -99,9 +99,11 @@ Flujo:
 
 1. Al crear un cobro para un cliente con celular **y con "Aceptó recibir cobros por WhatsApp"**, se manda la plantilla de cobro nuevo (después de responder al panel).
 2. El cliente hace todo desde el chat, sin abrir links:
-   - **"Pagar ahora"** abre un intento push en Pey: le llega la notificación de CoDi a la app de su banco (al celular registrado por el negocio) y el chat le confirma, con un botón "Prefiero QR" por si no le llegó.
-   - **"Prefiero QR"** abre un intento QR en Pey y responde con la imagen del QR.
-   - **"Más tarde"** guarda una fila en `reminder_requests` (para mañana) y confirma con botones "Pagar ahora" y "Prefiero QR".
+   - **"Pagar ahora"** abre un intento push en Pey: le llega la notificación de CoDi a la app de su banco (al celular registrado por el negocio). El chat le confirma y, si no le llegó, le pide activar CoDi en su banco y volver a tocar "Pagar ahora", con un botón **"Enviar QR"** como último recurso.
+   - **"Enviar QR"** (solo en las respuestas, no en la plantilla) abre un intento QR en Pey y responde con la imagen, para escanearla desde otra pantalla o leerla desde la galería. Mientras el push siga vigente no se crea el QR (un solo intento vivo por adeudo); el chat le dice en cuántos minutos vence.
+   - **"Más tarde"** guarda una fila en `reminder_requests` (para mañana) y confirma con un botón "Pagar ahora".
+
+   El chat nunca manda links.
 
    Las respuestas con botones son mensajes interactivos: como el texto libre, solo llegan dentro de las 24 h posteriores a que el cliente tocó un botón, que es justo cuando se mandan. La página `/pagar/<token>` queda como respaldo (botón `wa.me` del panel o cuando no hay plantillas).
 3. Cuando `process_pey_payment` marca el cobro pagado, se manda "Pago recibido".
@@ -114,7 +116,7 @@ Configuración en Meta for Developers:
 3. App Settings → Basic → App Secret a `WHATSAPP_APP_SECRET`.
 4. WhatsApp → Configuration → Webhook: URL `https://TU-DOMINIO/api/webhooks/whatsapp`, Verify token igual a `WHATSAPP_VERIFY_TOKEN`; suscribir el campo `messages`.
 5. Plantillas (categoría Utility, idioma Español (MEX) `es_MX`), con los parámetros en este orden:
-   - Cobro nuevo y recordatorio: cuerpo con `{{1}}` cliente, `{{2}}` negocio, `{{3}}` concepto, `{{4}}` monto. Botones, los tres de **respuesta rápida** y en este orden: 0 = "Pagar ahora", 1 = "Más tarde", 2 = "Prefiero QR". Ninguno es de tipo URL.
+   - Cobro nuevo y recordatorio: cuerpo con `{{1}}` cliente, `{{2}}` negocio, `{{3}}` concepto, `{{4}}` monto. Dos botones de **respuesta rápida**, en este orden: 0 = "Pagar ahora", 1 = "Más tarde". Ninguno es de tipo URL.
    - Pago recibido: cuerpo con `{{1}}` concepto, `{{2}}` monto, `{{3}}` negocio. Sin botones.
 
 El texto libre (respuestas, QR) solo llega si el cliente escribió o tocó un botón en las últimas 24 h; por eso "Pago recibido" usa plantilla cuando está configurada.

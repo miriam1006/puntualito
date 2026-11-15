@@ -15,7 +15,7 @@ const PURPOSE_LABEL: Record<WhatsAppMessage["purpose"], string> = {
   payment_received: "Pago recibido",
   reply: "Respuesta",
   button_pay_now: "Cliente: Pagar ahora",
-  button_pay_qr: "Cliente: Prefiero QR",
+  button_pay_qr: "Cliente: pidió QR",
   button_later: "Cliente: Más tarde",
   inbound: "Cliente escribió",
 };
