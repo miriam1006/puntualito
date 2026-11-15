@@ -1,39 +1,75 @@
 # Puntualito
 
-Cobranza con CoDi para negocios pequeños (gimnasios, escuelas, talleres, consultorios), a través de la API de Pey.
+**Cobranza recurrente con CoDi para negocios pequeños, sin comisiones y sin que el cliente tenga que descargar nada.**
 
-El comercio crea un cobro, lo comparte como link y el cliente lo paga con QR o con una notificación en la app de su banco. El dinero va directo a la cuenta del negocio; Puntualito nunca lo toca.
+Demo en producción: **https://puntualito.vercel.app** · Hackatón México 2026 · API de Pey
 
-## Estado
+## El problema
 
-Esqueleto funcional. **No se ha probado contra Pey ni contra Supabase reales**: pasa pruebas unitarias, TypeScript, compilación y una prueba del SQL en un Postgres local (ver "Validación").
+Gimnasios, consultorios de ortodoncia, servicios de mantenimiento, escuelas de música y otros negocios con mensualidades cobran mes a mes por transferencia o en efectivo. Persiguen pagos por WhatsApp, revisan capturas de transferencias a mano y pagan comisiones de terminal cuando aceptan tarjeta.
 
-Incluye:
+## La solución
 
-- Motor de cobro: cliente de Pey, webhook firmado, recibos, auditoría.
-- Adeudos (`dues`) separados de intentos (`attempts`), con **un solo intento vivo por adeudo**.
-- Link público de pago `/pagar/<token>`: QR o push, con estado en vivo.
-- Panel del comercio: clientes, crear cobro, lista de pagados y pendientes, historial de WhatsApp por cobro y botón `wa.me` de respaldo.
-- WhatsApp Business (Cloud API): plantilla con "Pagar ahora" (push de CoDi) y "Más tarde" al crear el cobro, QR por WhatsApp como respaldo, "Pago recibido" y estados de entrega. Ver "WhatsApp Business".
+El negocio registra al cliente una vez y Puntualito cobra cada periodo con **CoDi**:
 
-Pendiente (en orden sugerido):
+1. El negocio toca **Cobrar** (o el cobro se genera solo con la mensualidad programada).
+2. Al cliente le llega una **notificación de CoDi en la app de su banco**: monto, concepto y negocio. La autoriza y listo.
+3. Pey confirma el pago con un webhook firmado y el panel lo marca **Pagado** con su recibo, sin conciliar a mano.
 
-1. ~~Verificar el push contra `docs.pey.mx/openapi.json`~~. Hecho: `POST /codi/pn` y `codi.pn.payment_received` coinciden con la referencia oficial (copia en `docs/pey-openapi.json`, versión 2026-10-20). Falta probarlo con un celular real.
-2. ~~Conciliación manual~~. Hecho: botón "Verificar pago" en el panel → `POST /api/dues/<id>/verify`, que consulta `GET /transaction/{id}` (push) o `GET /transaction/codi/qr/{id}` (QR) y registra el pago por `process_pey_payment` con `webhook_id` `reconcile:<transactionId>`.
-3. ~~Cobros programados y recordatorios~~. Hecho: Vercel Cron genera los adeudos de los planes, envía la plantilla de cobro nuevo por WhatsApp (`onDuesGenerated`) y procesa los recordatorios "Más tarde" vencidos (`reminder_requests`).
-4. WhatsApp Business: aprobar las plantillas en Meta y probar con el número de prueba (no se ha probado contra Meta real). Sin las variables `WHATSAPP_*` el cron solo registra en logs.
-5. ~~Pantalla para resolver adeudos "Por revisar" y editar o dar de baja clientes~~. Hecho: `/revisar` y `/clientes`.
+El dinero va directo de la cuenta del cliente a la del negocio: **CoDi no cobra comisión** y Puntualito nunca toca el dinero.
+
+## Qué funciona hoy en producción
+
+- **Cobro CoDi real con Pey:** push a la app del banco (`POST /codi/pn`) y QR como respaldo (`POST /codi/qr`).
+- **Reacción al pago:** webhook firmado de Pey → el cobro pasa a *Pagado* con recibo y auditoría. "Verificar pago" consulta a Pey si un webhook se pierde.
+- **Panel del negocio:** cobrar a un cliente nuevo o existente en un paso; pendientes, pagados y casos *Por revisar* (pago repetido o monto distinto; nunca se descarta dinero recibido).
+- **Mensualidades programadas:** semanales o mensuales por cliente; un cron diario genera los cobros.
+- **Seguridad:** un solo intento de cobro vivo por adeudo (evita cobrar dos veces), tope de monto configurable, firma de webhooks y RLS en Supabase.
+
+## WhatsApp (integración lista, pendiente de Meta)
+
+El canal pensado para el cliente es WhatsApp: un mensaje del negocio con dos botones, **Pagar ahora** (dispara el push de CoDi) y **Más tarde** (agenda un recordatorio), y el comprobante "¡Pago recibido!" al final. Todo por chat, sin links ni apps nuevas.
+
+El código está terminado y probado (plantillas con botones, webhook de Meta con verificación de firma, respuestas a cada botón). La cuenta de WhatsApp Business está **en verificación de negocio por Meta** (hasta 14 días hábiles), así que todavía no puede enviar mensajes.
+
+Mientras tanto, cada cobro tiene **"Vista del cliente (demo)"**: muestra la conversación tal como la verá el cliente, y sus botones usan el mismo flujo real. «Pagar ahora» manda el push CoDi verdadero con Pey.
+
+## Cómo probarlo
+
+1. Entra a https://puntualito.vercel.app con el usuario de prueba (viene en el formulario de entrega).
+2. En **Nuevo cobro**, elige "+ Cliente nuevo", escribe tu celular (con CoDi activado en tu banco), un concepto y **$0.01**, y toca **Cobrar**.
+3. Autoriza la notificación en la app de tu banco. En unos segundos el cobro aparece como **Pagado**.
+4. Abre "Vista del cliente (demo)" en un cobro pendiente para ver la experiencia por WhatsApp.
+
+> Los cobros son reales (Pey no tiene sandbox). El servidor tiene un tope de monto para pruebas.
+
+## Siguiente paso: facturación automática
+
+Que cada pago con CoDi genere su **recibo o factura (CFDI)** sin capturar nada: los datos fiscales del cliente se guardan una vez y la factura se timbra y se manda por WhatsApp al confirmarse el pago.
+
+## Stack
+
+Next.js (App Router) + TypeScript · Supabase (Postgres, RLS, funciones SQL) · API de Pey (CoDi) · WhatsApp Cloud API · Vercel (hosting y cron).
+
+---
+
+# Detalles técnicos
+
+## Estado de las piezas
+
+- Probado en producción con Pey real: push, QR, webhook y "Pagado".
+- WhatsApp Business: implementado y con pruebas unitarias; no se ha probado contra Meta real porque la cuenta está en verificación. Sin las variables `WHATSAPP_*`, el servidor solo lo registra en logs.
 
 ## Por revisar y cobros programados
 
 - **`/revisar`:** adeudos con pago repetido, monto distinto o pagados después de cancelar, con sus recibos. Acciones (función `resolve_due`, con auditoría): *Marcar como pagado*, *Requiere reembolso* (nota obligatoria; sigue en revisión) y *Cerrar revisión* (queda pagado si ya tenía un pago válido; si no, cancelado).
 - **`/clientes`:** editar (`update_customer`) y dar de baja (`deactivate_customer`, detiene sus planes) clientes; programar cobros semanales o mensuales por cliente (`create_plan`, `deactivate_plan`).
-- **Generación:** `generate_due_dues` crea los adeudos vencidos de los planes activos. Es idempotente (`unique (plan_id, due_date)`) y recupera hasta 12 periodos atrasados. La corre Vercel Cron a diario (`vercel.json`, 13:00 UTC = 7:00 en CDMX) en `/api/cron/generate-dues` con `CRON_SECRET`, y el botón "Generar cobros ahora" del panel para la demo.
+- **Generación:** `generate_due_dues` crea los adeudos vencidos de los planes activos. Es idempotente (`unique (plan_id, due_date)`) y recupera hasta 12 periodos atrasados. La corre Vercel Cron a diario (`vercel.json`, 13:00 UTC = 7:00 en CDMX) en `/api/cron/generate-dues` con `CRON_SECRET`, y el botón "Generar cobros ahora" de Clientes y planes para la demo.
 
 ## Cómo funciona un cobro
 
-1. El comercio crea un **adeudo** (cliente opcional, concepto, monto). Nace con un token público de 64 caracteres.
-2. El cliente abre `/pagar/<token>` y elige **QR** o **Enviar a la app de mi banco** (push; solo si el comercio registró su celular).
+1. El comercio crea un **adeudo** (cliente, concepto, monto) con "Cobrar", o lo genera un plan programado. Nace con un token público de 64 caracteres.
+2. Se pide el pago: push al celular del cliente ("Cobrar" en el panel o "Pagar ahora" en WhatsApp) o QR ("Mostrar QR" o "Enviar QR").
 3. El servidor reserva un **intento** y hace una sola llamada a Pey. Mientras ese intento esté vivo (10 min el QR, 6 min el push) no se crea otro para el mismo adeudo.
 4. Pey confirma el pago con un webhook firmado. La función `process_pey_payment` registra el recibo y marca intento y adeudo como pagados en una sola transacción.
 5. La página pública y el panel consultan el estado y muestran "Pago recibido".
