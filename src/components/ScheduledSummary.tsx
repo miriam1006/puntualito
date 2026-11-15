@@ -1,19 +1,16 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { clientApi } from "@/lib/client-api";
 import { formatCents } from "@/lib/phone";
 import { describePlan, formatIsoDate } from "@/lib/plans";
-import { GenerateDuesButton } from "./GenerateDuesButton";
 import type { Plan } from "./types";
 
-/** Tarjeta del panel: próximos cobros programados y el botón de la demo. */
-export function ScheduledSummary({ onGenerated }: { onGenerated: () => Promise<void> }) {
+/** Tarjeta del panel: próximos cobros programados. Generarlos a mano vive en Clientes y planes. */
+export function ScheduledSummary() {
   const [plans, setPlans] = useState<Plan[] | null>(null);
-  const load = useCallback(async () => {
-    const data = await clientApi("/api/plans");
-    setPlans(data.plans);
+  useEffect(() => {
+    clientApi("/api/plans").then(data => setPlans(data.plans)).catch(() => setPlans([]));
   }, []);
-  useEffect(() => { load().catch(() => setPlans([])); }, [load]);
 
   const upcoming = (plans ?? []).slice(0, 3);
   return (
@@ -36,7 +33,6 @@ export function ScheduledSummary({ onGenerated }: { onGenerated: () => Promise<v
           {plans.length > upcoming.length && <li className="muted">y {plans.length - upcoming.length} más</li>}
         </ul>
       )}
-      <GenerateDuesButton onGenerated={async () => { await Promise.all([onGenerated(), load()]); }} />
     </section>
   );
 }

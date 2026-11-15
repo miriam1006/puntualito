@@ -2,7 +2,7 @@
 
 export type WhatsAppMessage = {
   id: string; due_id: string; direction: "out" | "in";
-  purpose: "due_created" | "reminder" | "qr" | "later_ack" | "payment_received" | "reply" | "button_pay_qr" | "button_later" | "inbound";
+  purpose: "due_created" | "reminder" | "qr" | "later_ack" | "payment_received" | "reply" | "button_pay_now" | "button_pay_qr" | "button_later" | "inbound";
   kind: string; status: "queued" | "sent" | "delivered" | "read" | "failed" | "received";
   body: string | null; error_code: string | null; error_title: string | null; status_at: string | null; created_at: string;
 };
@@ -14,7 +14,8 @@ const PURPOSE_LABEL: Record<WhatsAppMessage["purpose"], string> = {
   later_ack: "Confirmación de recordatorio",
   payment_received: "Pago recibido",
   reply: "Respuesta",
-  button_pay_qr: "Cliente: Prefiero QR",
+  button_pay_now: "Cliente: Pagar ahora",
+  button_pay_qr: "Cliente: pidió QR",
   button_later: "Cliente: Más tarde",
   inbound: "Cliente escribió",
 };

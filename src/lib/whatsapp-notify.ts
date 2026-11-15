@@ -5,14 +5,14 @@ import { openAttempt } from "@/lib/attempts";
 import { formatCents } from "@/lib/phone";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
-  dueTemplatePayload, paymentReceivedTemplatePayload, sendImage, sendTemplate, sendText,
+  dueTemplatePayload, paymentReceivedTemplatePayload, sendButtons, sendImage, sendTemplate, sendText,
   whatsappConfig, WhatsAppError, type ButtonAction, type WhatsAppConfig,
 } from "@/lib/whatsapp";
 import { buttonActionFromText, parseButtonPayload, type WhatsAppEvent } from "@/lib/whatsapp-webhook";
 
 type Admin = ReturnType<typeof createAdminClient>;
 type Purpose = "due_created" | "reminder" | "qr" | "later_ack" | "payment_received" | "reply"
-  | "button_pay_qr" | "button_later" | "inbound";
+  | "button_pay_now" | "button_pay_qr" | "button_later" | "inbound";
 type MessageRow = {
   merchant_id: string; due_id: string | null; customer_id: string | null; phone: string;
   purpose: Purpose; kind: "template" | "text" | "image" | "button" | "interactive" | "unsupported"; body: string | null;
@@ -29,10 +29,6 @@ function configOrSkip(reason: string): WhatsAppConfig | null {
   const config = whatsappConfig();
   if (!config) console.info("whatsapp_skipped", { reason: "not_configured", action: reason });
   return config;
-}
-
-function payLink(token: string) {
-  return `${process.env.APP_URL ?? ""}/pagar/${token}`;
 }
 
 async function loadDue(admin: Admin, dueId: string): Promise<DueContext | null> {
@@ -98,7 +94,7 @@ async function sendDueTemplate(dueId: string, purpose: "due_created" | "reminder
     body: `${purpose === "due_created" ? "Cobro" : "Recordatorio"}: ${due.concept} por ${amount}`,
   }, () => sendTemplate(config, dueTemplatePayload({
     to: phone, template, language: config.language, customerName: due.customer?.name ?? "",
-    merchantName: due.merchantName, concept: due.concept, amount, publicToken: due.public_token, dueId: due.id,
+    merchantName: due.merchantName, concept: due.concept, amount, dueId: due.id,
   })));
 }
 
@@ -145,6 +141,54 @@ async function reply(admin: Admin, config: WhatsAppConfig, due: DueContext, phon
   }, () => sendText(config, phone, text));
 }
 
+/** Respuesta con botones: el cliente sigue en el chat en lugar de abrir un link. */
+async function replyWithButtons(admin: Admin, config: WhatsAppConfig, due: DueContext, phone: string, purpose: Purpose,
+  text: string, actions: ButtonAction[]) {
+  await deliver(admin, {
+    merchant_id: due.merchant_id, due_id: due.id, customer_id: due.customer_id, phone, purpose, kind: "interactive", body: text,
+  }, () => sendButtons(config, phone, text, due.id, actions));
+}
+
+/** "Pagar ahora": manda la solicitud de CoDi a la app del banco del celular registrado, sin links. */
+async function replyWithPush(dueId: string, phone: string) {
+  const config = configOrSkip("pay_now");
+  if (!config) return;
+  const admin = createAdminClient();
+  const due = await loadDue(admin, dueId);
+  if (!due) return;
+  if (due.status !== "open") return reply(admin, config, due, phone, "reply", CLOSED_TEXT[due.status] ?? CLOSED_TEXT.cancelled);
+  const amount = formatCents(due.amount_cents);
+  let attempt: Record<string, any> | null;
+  try {
+    attempt = (await openAttempt(due.public_token, "push")).attempt;
+  } catch (e) {
+    const detail = e instanceof ApiError ? e.message : "No pudimos enviar la solicitud a tu banco.";
+    return replyWithButtons(admin, config, due, phone, "reply", `${detail} ${ACTIVATE_CODI}`, ["pay_now", "pay_qr"]);
+  }
+  if (attempt?.kind === "push") {
+    const text = attempt.status === "creating"
+      ? "Estamos enviando la solicitud de pago a la app de tu banco. Te llegará en un momento."
+      : `Listo. Te llegó una notificación de tu banco para pagar ${amount} a ${due.merchantName} con CoDi. `
+        + `Ábrela y autoriza el pago; vence ${expiresIn(attempt.expires_at)}.\n\n¿No te llegó? ${ACTIVATE_CODI}`;
+    return replyWithButtons(admin, config, due, phone, "reply", text, ["pay_qr"]);
+  }
+  // Ya hay un QR vigente para este cobro: un solo intento vivo por adeudo.
+  return replyWithButtons(admin, config, due, phone, "reply",
+    `Ya te mandamos un código QR para este cobro; vence ${expiresIn(attempt?.expires_at)}. `
+    + "Escanéalo desde otra pantalla o guárdalo y léelo desde la app de tu banco (CoDi).", ["pay_qr"]);
+}
+
+const ACTIVATE_CODI = "Revisa que tengas CoDi activado en la app de tu banco y vuelve a tocar «Pagar ahora». "
+  + "Si no lo tienes, te mandamos un código QR.";
+
+/** "en 4 minutos" a partir de expires_at del intento; sin fecha, "en unos minutos". */
+function expiresIn(expiresAt: unknown): string {
+  const ms = typeof expiresAt === "string" ? Date.parse(expiresAt) - Date.now() : NaN;
+  if (!Number.isFinite(ms) || ms <= 0) return "en unos minutos";
+  const minutes = Math.max(1, Math.round(ms / 60_000));
+  return minutes === 1 ? "en 1 minuto" : `en ${minutes} minutos`;
+}
+
 const CLOSED_TEXT: Record<string, string> = {
   paid: "Este cobro ya está pagado. ¡Gracias!",
   review: "Ya recibimos un pago para este cobro. El negocio lo está revisando.",
@@ -158,23 +202,24 @@ async function replyWithQr(dueId: string, phone: string) {
   const due = await loadDue(admin, dueId);
   if (!due) return;
   if (due.status !== "open") return reply(admin, config, due, phone, "reply", CLOSED_TEXT[due.status] ?? CLOSED_TEXT.cancelled);
-  const link = payLink(due.public_token);
   let attempt: Record<string, any> | null;
   try {
     attempt = (await openAttempt(due.public_token, "qr")).attempt;
   } catch (e) {
     const detail = e instanceof ApiError ? e.message : "No pudimos generar el QR.";
-    return reply(admin, config, due, phone, "reply", `${detail} También puedes pagar aquí: ${link}`);
+    return replyWithButtons(admin, config, due, phone, "reply", `${detail} Toca de nuevo en un momento.`, ["pay_qr"]);
   }
   if (!attempt || attempt.kind !== "qr" || !attempt.qr_string) {
+    // Un solo intento vivo por adeudo: mientras el push siga vigente no se puede crear el QR (evita cobrar dos veces).
     const text = attempt?.kind === "push"
-      ? `Ya enviamos la solicitud de pago a la app de tu banco; vence en unos minutos. Si prefieres QR, ábrelo aquí: ${link}`
-      : `Estamos preparando tu QR. Ábrelo aquí: ${link}`;
-    return reply(admin, config, due, phone, "reply", text);
+      ? `La notificación que enviamos a tu banco sigue vigente; vence ${expiresIn(attempt.expires_at)}. `
+        + "Si no te llegó, toca «Enviar QR» cuando venza y te lo mandamos."
+      : "Estamos preparando tu QR. Toca «Enviar QR» en un momento.";
+    return replyWithButtons(admin, config, due, phone, "reply", text, ["pay_qr"]);
   }
   const png = await QRCode.toBuffer(attempt.qr_string, { type: "png", width: 600, margin: 2 });
   const caption = `${due.concept} · ${formatCents(due.amount_cents)} para ${due.merchantName}. `
-    + "Escanéalo o ábrelo desde la app de tu banco (CoDi). Vence en 10 minutos.";
+    + `Escanéalo desde otra pantalla o guárdalo y léelo desde la app de tu banco (CoDi). Vence ${expiresIn(attempt.expires_at)}.`;
   await deliver(admin, {
     merchant_id: due.merchant_id, due_id: due.id, customer_id: due.customer_id, phone, purpose: "qr", kind: "image", body: caption,
   }, () => sendImage(config, phone, png, caption));
@@ -190,10 +235,9 @@ async function recordLater(dueId: string, phone: string) {
   const due = await loadDue(admin, dueId);
   if (!due) return;
   const saved = Array.isArray(data) ? data[0] : data;
-  const text = saved?.id
-    ? `Listo, te lo recordamos mañana. Si quieres pagar antes: ${payLink(due.public_token)}`
-    : CLOSED_TEXT[due.status] ?? CLOSED_TEXT.cancelled;
-  await reply(admin, config, due, phone, "later_ack", text);
+  if (!saved?.id) return reply(admin, config, due, phone, "later_ack", CLOSED_TEXT[due.status] ?? CLOSED_TEXT.cancelled);
+  await replyWithButtons(admin, config, due, phone, "later_ack",
+    "Listo, te lo recordamos mañana. Si quieres pagar antes, toca «Pagar ahora».", ["pay_now"]);
 }
 
 type Original = { merchant_id: string; due_id: string | null; customer_id: string | null; phone: string };
@@ -233,7 +277,8 @@ export async function handleWhatsAppEvents(events: WhatsAppEvent[]): Promise<Arr
     const parsed = parseButtonPayload(event.buttonPayload);
     let action: ButtonAction | null = parsed ? parsed.action : event.kind === "text" ? null : buttonActionFromText(event.text);
     if (parsed && parsed.dueId !== original.due_id) action = null;
-    const purpose: Purpose = action === "pay_qr" ? "button_pay_qr" : action === "pay_later" ? "button_later" : "inbound";
+    const purpose: Purpose = action === "pay_now" ? "button_pay_now" : action === "pay_qr" ? "button_pay_qr"
+      : action === "pay_later" ? "button_later" : "inbound";
     const { error } = await admin.from("whatsapp_messages").insert({
       merchant_id: original.merchant_id, due_id: original.due_id, customer_id: original.customer_id, phone,
       direction: "in", purpose, kind: event.kind, body: event.text?.slice(0, 1024) ?? null,
@@ -247,7 +292,10 @@ export async function handleWhatsAppEvents(events: WhatsAppEvent[]): Promise<Arr
     const dueId = original.due_id;
     if (!dueId || !action) continue;
     followUps.push(async () => {
-      try { await (action === "pay_qr" ? replyWithQr(dueId, phone) : recordLater(dueId, phone)); }
+      try {
+        await (action === "pay_now" ? replyWithPush(dueId, phone)
+          : action === "pay_qr" ? replyWithQr(dueId, phone) : recordLater(dueId, phone));
+      }
       catch { console.error("whatsapp_followup_failed", { action, dueId }); }
     });
   }

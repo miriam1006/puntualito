@@ -27,18 +27,20 @@ export function CustomersScreen() {
   if (!session?.merchant) return <main className="narrow"><p className="muted">Cargando…</p></main>;
 
   return (
-    <main>
+    <main className="app">
       <AppHeader merchantName={session.merchant.name} active="customers" />
       <section className="intro">
         <h1>Clientes y planes</h1>
-        <p className="muted">Programa cobros recurrentes por cliente. Cada día Puntualito crea los que tocan; para la demo puedes generarlos ahora.</p>
-        <GenerateDuesButton className="" onGenerated={refresh} />
+        <p className="muted">Programa cobros recurrentes por cliente. Cada día Puntualito crea los que tocan.</p>
+        {/* Solo tiene sentido con planes activos; para la demo corre lo que el cron hace cada mañana. */}
+        {plans.length > 0 && <GenerateDuesButton className="" onGenerated={refresh} />}
       </section>
+      <NewCustomer onCreated={refresh} />
       {error && <p className="error" role="alert">{error}</p>}
       {customers === null ? <p className="muted">Cargando…</p> : customers.length === 0 ? (
         <section className="card empty">
           <p className="empty-title">Aún no hay clientes</p>
-          <p className="muted">Agrégalos desde el <a className="link" href="/">panel de cobros</a>.</p>
+          <p className="muted">Agrega el primero con el formulario de arriba.</p>
         </section>
       ) : customers.map(customer => (
         <CustomerCard key={customer.id} customer={customer}
@@ -215,6 +217,49 @@ function NewPlan({ customer, onCreated }: { customer: Customer; onCreated: () =>
       </div>
       <p className="muted">Primer cobro: {formatIsoDate(firstDate)} · después: {formatIsoDate(secondDate)}</p>
       <button type="submit" disabled={busy}>Programar</button>
+      {error && <p className="error" role="alert">{error}</p>}
+    </form>
+  );
+}
+
+function NewCustomer({ onCreated }: { onCreated: () => Promise<void> }) {
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [optIn, setOptIn] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true); setError("");
+    try {
+      await clientApi("/api/customers", {
+        method: "POST", body: JSON.stringify({ name: name.trim(), phone, whatsapp_opt_in: optIn }),
+      });
+      setName(""); setPhone(""); setOptIn(false);
+      await onCreated();
+    } catch (e) { setError(e instanceof Error ? e.message : "No se pudo guardar."); }
+    finally { setBusy(false); }
+  }
+  return (
+    <form className="card" onSubmit={submit}>
+      <h2>Agregar cliente</h2>
+      <div className="row">
+        <div className="field">
+          <label htmlFor="customer-name">Nombre</label>
+          <input id="customer-name" required maxLength={100} value={name} onChange={e => setName(e.target.value)} />
+        </div>
+        <div className="field">
+          <label htmlFor="customer-phone">Celular (10 dígitos)</label>
+          <input id="customer-phone" inputMode="tel" maxLength={30} value={phone} onChange={e => setPhone(e.target.value)} />
+        </div>
+      </div>
+      <div className="field">
+        <label className="check">
+          <input type="checkbox" checked={optIn} onChange={e => setOptIn(e.target.checked)} />
+          Aceptó recibir cobros por WhatsApp
+        </label>
+      </div>
+      <button type="submit" className="secondary" disabled={busy}>Agregar cliente</button>
       {error && <p className="error" role="alert">{error}</p>}
     </form>
   );
