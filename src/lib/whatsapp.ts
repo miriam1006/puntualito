@@ -51,7 +51,7 @@ export function templateParam(value: string, max = 100): string {
   return text || "-";
 }
 
-export const BUTTON_ACTIONS = ["pay_qr", "pay_later"] as const;
+export const BUTTON_ACTIONS = ["pay_now", "pay_qr", "pay_later"] as const;
 export type ButtonAction = (typeof BUTTON_ACTIONS)[number];
 
 export function buttonPayload(action: ButtonAction, dueId: string): string {
@@ -60,15 +60,18 @@ export function buttonPayload(action: ButtonAction, dueId: string): string {
 
 export type DueTemplateInput = {
   to: string; template: string; language: string;
-  customerName: string; merchantName: string; concept: string; amount: string;
-  publicToken: string; dueId: string;
+  customerName: string; merchantName: string; concept: string; amount: string; dueId: string;
 };
 
 /** Plantilla de cobro (nuevo o recordatorio). Debe estar registrada en Meta con:
- * cuerpo {{1}} cliente, {{2}} negocio, {{3}} concepto, {{4}} monto; botón 0 URL "Pagar ahora"
- * (https://DOMINIO/pagar/{{1}}); botón 1 respuesta rápida "Más tarde"; botón 2 respuesta rápida "Prefiero QR". */
+ * cuerpo {{1}} cliente, {{2}} negocio, {{3}} concepto, {{4}} monto; tres respuestas rápidas en este orden:
+ * 0 "Pagar ahora" (manda el push de CoDi), 1 "Más tarde", 2 "Prefiero QR". El cliente no abre ningún link. */
 export function dueTemplatePayload(input: DueTemplateInput) {
-  if (!/^[0-9a-f]{64}$/.test(input.publicToken)) throw new Error("invalid_token");
+  if (!/^[0-9a-f-]{36}$/.test(input.dueId)) throw new Error("invalid_due");
+  const quickReply = (index: number, action: ButtonAction) => ({
+    type: "button", sub_type: "quick_reply", index: String(index),
+    parameters: [{ type: "payload", payload: buttonPayload(action, input.dueId) }],
+  });
   return {
     messaging_product: "whatsapp",
     recipient_type: "individual",
@@ -83,11 +86,9 @@ export function dueTemplatePayload(input: DueTemplateInput) {
           parameters: [input.customerName, input.merchantName, input.concept, input.amount]
             .map(text => ({ type: "text", text: templateParam(text) })),
         },
-        { type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: input.publicToken }] },
-        { type: "button", sub_type: "quick_reply", index: "1",
-          parameters: [{ type: "payload", payload: buttonPayload("pay_later", input.dueId) }] },
-        { type: "button", sub_type: "quick_reply", index: "2",
-          parameters: [{ type: "payload", payload: buttonPayload("pay_qr", input.dueId) }] },
+        quickReply(0, "pay_now"),
+        quickReply(1, "pay_later"),
+        quickReply(2, "pay_qr"),
       ],
     },
   };
@@ -118,6 +119,28 @@ export function textPayload(to: string, body: string) {
   return {
     messaging_product: "whatsapp", recipient_type: "individual", to: toWhatsAppNumber(to),
     type: "text", text: { body: body.slice(0, 4096), preview_url: false },
+  };
+}
+
+export const BUTTON_TITLES: Record<ButtonAction, string> = {
+  pay_now: "Pagar ahora", pay_later: "Más tarde", pay_qr: "Prefiero QR",
+};
+
+/** Mensaje con botones de respuesta (máx. 3). Como el texto libre, solo llega dentro de las 24 h
+ * posteriores al último mensaje del cliente: sirve para contestarle sin mandarlo a un link. */
+export function buttonsPayload(to: string, body: string, dueId: string, actions: ButtonAction[]) {
+  return {
+    messaging_product: "whatsapp", recipient_type: "individual", to: toWhatsAppNumber(to),
+    type: "interactive",
+    interactive: {
+      type: "button",
+      body: { text: body.slice(0, 1024) },
+      action: {
+        buttons: actions.slice(0, 3).map(action => ({
+          type: "reply", reply: { id: buttonPayload(action, dueId), title: BUTTON_TITLES[action] },
+        })),
+      },
+    },
   };
 }
 
@@ -169,6 +192,11 @@ export function sendTemplate(config: WhatsAppConfig,
 
 export function sendText(config: WhatsAppConfig, to: string, body: string, fetchImpl: FetchLike = fetch) {
   return sendMessage(config, textPayload(to, body), fetchImpl);
+}
+
+export function sendButtons(config: WhatsAppConfig, to: string, body: string, dueId: string, actions: ButtonAction[],
+  fetchImpl: FetchLike = fetch) {
+  return sendMessage(config, buttonsPayload(to, body, dueId, actions), fetchImpl);
 }
 
 /** Sube la imagen a Meta (no requiere URL pública) y la manda con su media id. */

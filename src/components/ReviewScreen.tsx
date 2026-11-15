@@ -37,7 +37,7 @@ export function ReviewScreen() {
   if (!session?.merchant) return <main className="narrow"><p className="muted">Cargando…</p></main>;
 
   return (
-    <main>
+    <main className="app">
       <AppHeader merchantName={session.merchant.name} active="review" reviewCount={dues?.length} />
       <section className="intro">
         <h1>Por revisar</h1>

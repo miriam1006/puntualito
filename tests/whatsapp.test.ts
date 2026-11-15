@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import test from "node:test";
 import {
-  dueTemplatePayload, sendImage, sendText, templateParam, whatsappConfig, WhatsAppError, type WhatsAppConfig,
+  buttonsPayload, dueTemplatePayload, sendImage, sendText, templateParam, whatsappConfig, WhatsAppError, type WhatsAppConfig,
 } from "../src/lib/whatsapp";
 import {
   buttonActionFromText, parseButtonPayload, parseWhatsAppWebhook, verifyHandshake, verifyMetaSignature,
@@ -11,7 +11,6 @@ import {
 const SECRET = "test_app_secret";
 const PHONE_ID = "123456789012345";
 const DUE_ID = "6f1c2d3e-4b5a-4c6d-8e7f-90a1b2c3d4e5";
-const TOKEN = "a".repeat(64);
 const sign = (body: string, secret = SECRET) => `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
 
 const config: WhatsAppConfig = {
@@ -99,13 +98,26 @@ test("parsea estados de entrega, incluidos errores, e ignora otros números", ()
 test("payload de botones: solo acciones conocidas con id de adeudo", () => {
   assert.deepEqual(parseButtonPayload(`pay_qr:${DUE_ID}`), { action: "pay_qr", dueId: DUE_ID });
   assert.deepEqual(parseButtonPayload(`pay_later:${DUE_ID}`), { action: "pay_later", dueId: DUE_ID });
-  for (const bad of [null, "", "pay_qr", `pay_now:${DUE_ID}`, `pay_qr:${DUE_ID}x`, "pay_qr:../../x"]) {
+  assert.deepEqual(parseButtonPayload(`pay_now:${DUE_ID}`), { action: "pay_now", dueId: DUE_ID });
+  for (const bad of [null, "", "pay_qr", `pay_push:${DUE_ID}`, `pay_qr:${DUE_ID}x`, "pay_qr:../../x"]) {
     assert.equal(parseButtonPayload(bad), null, String(bad));
   }
   assert.equal(buttonActionFromText("Prefiero QR"), "pay_qr");
   assert.equal(buttonActionFromText(" mas tarde "), "pay_later");
   assert.equal(buttonActionFromText("Más tarde"), "pay_later");
-  assert.equal(buttonActionFromText("pagar ahora"), null);
+  assert.equal(buttonActionFromText("Pagar ahora"), "pay_now");
+  assert.equal(buttonActionFromText("pagar"), null);
+});
+
+test("respuesta con botones: ids con el adeudo y títulos válidos para WhatsApp", () => {
+  const payload = buttonsPayload("5512345678", "¿No te llegó?", DUE_ID, ["pay_now", "pay_qr"]);
+  assert.equal(payload.to, "525512345678");
+  assert.equal(payload.type, "interactive");
+  assert.deepEqual(payload.interactive.action.buttons, [
+    { type: "reply", reply: { id: `pay_now:${DUE_ID}`, title: "Pagar ahora" } },
+    { type: "reply", reply: { id: `pay_qr:${DUE_ID}`, title: "Prefiero QR" } },
+  ]);
+  for (const button of payload.interactive.action.buttons) assert.ok(button.reply.title.length <= 20);
 });
 
 test("configuración: sin número o token es no-op", () => {
@@ -118,20 +130,21 @@ test("configuración: sin número o token es no-op", () => {
   assert.equal(c?.templates.paymentReceived, undefined);
 });
 
-test("plantilla de cobro: URL con token y respuestas rápidas con el adeudo", () => {
+test("plantilla de cobro: tres respuestas rápidas con el adeudo, sin link", () => {
   const payload = dueTemplatePayload({
     to: "5512345678", template: "cobro_nuevo", language: "es_MX", customerName: "Ana\nLópez",
-    merchantName: "Gimnasio", concept: "Mensualidad", amount: "$600.00", publicToken: TOKEN, dueId: DUE_ID,
+    merchantName: "Gimnasio", concept: "Mensualidad", amount: "$600.00", dueId: DUE_ID,
   });
   assert.equal(payload.to, "525512345678");
-  const [body, url, later, qr] = payload.template.components;
+  const [body, now, later, qr] = payload.template.components;
   assert.deepEqual(body.parameters.map(p => "text" in p ? p.text : null), ["Ana López", "Gimnasio", "Mensualidad", "$600.00"]);
-  assert.deepEqual(url, { type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: TOKEN }] });
+  assert.deepEqual(now, { type: "button", sub_type: "quick_reply", index: "0", parameters: [{ type: "payload", payload: `pay_now:${DUE_ID}` }] });
   assert.deepEqual(later.parameters, [{ type: "payload", payload: `pay_later:${DUE_ID}` }]);
   assert.deepEqual(qr.parameters, [{ type: "payload", payload: `pay_qr:${DUE_ID}` }]);
-  assert.throws(() => dueTemplatePayload({ ...{
+  assert.ok(!JSON.stringify(payload).includes("/pagar/"));
+  assert.throws(() => dueTemplatePayload({
     to: "5512345678", template: "t", language: "es_MX", customerName: "", merchantName: "", concept: "", amount: "",
-    dueId: DUE_ID }, publicToken: "../x" }));
+    dueId: "../x" }));
   assert.equal(templateParam("  a    b\t\tc  "), "a b c");
   assert.equal(templateParam(""), "-");
 });

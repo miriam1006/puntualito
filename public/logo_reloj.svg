@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 280" role="img" aria-label="Puntualito">
+  <title>Puntualito</title>
+  <defs>
+    <linearGradient id="wordmark" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#2A1066"/>
+      <stop offset="42%" stop-color="#2A1066"/>
+      <stop offset="100%" stop-color="#6C3BFF"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(16,8) scale(1.72)">
+    <rect x="6" y="64" width="22" height="12" rx="6" fill="#2A1066"/>
+    <rect x="92" y="64" width="22" height="12" rx="6" fill="#2A1066"/>
+    <circle cx="9" cy="70" r="6.5" fill="#B6F22E"/>
+    <circle cx="111" cy="70" r="6.5" fill="#B6F22E"/>
+    <ellipse cx="60" cy="140" rx="30" ry="6" fill="rgba(42,16,102,.16)"/>
+    <rect x="36" y="111" width="15" height="23" rx="7.5" fill="#2A1066"/>
+    <rect x="69" y="111" width="15" height="23" rx="7.5" fill="#2A1066"/>
+    <ellipse cx="43.5" cy="133" rx="11" ry="6.8" fill="#B6F22E"/>
+    <ellipse cx="76.5" cy="133" rx="11" ry="6.8" fill="#B6F22E"/>
+    <circle cx="60" cy="62" r="49" fill="#2A1066"/>
+    <circle cx="60" cy="62" r="43.5" fill="#6C3BFF"/>
+    <circle cx="60" cy="62" r="36.5" fill="#FCFFF6"/>
+    <g stroke="#2A1066" stroke-width="3" stroke-linecap="round">
+      <line x1="60" y1="31" x2="60" y2="38"/>
+      <line x1="60" y1="86" x2="60" y2="93"/>
+      <line x1="29" y1="62" x2="36" y2="62"/>
+      <line x1="84" y1="62" x2="91" y2="62"/>
+    </g>
+    <circle cx="47" cy="55" r="5.3" fill="#2A1066"/>
+    <circle cx="73" cy="55" r="5.3" fill="#2A1066"/>
+    <circle cx="48.7" cy="53.3" r="1.7" fill="#fff"/>
+    <circle cx="74.7" cy="53.3" r="1.7" fill="#fff"/>
+    <circle cx="42" cy="66.5" r="5.6" fill="#B6F22E" opacity=".85"/>
+    <circle cx="78" cy="66.5" r="5.6" fill="#B6F22E" opacity=".85"/>
+    <path d="M48 74 Q60 85.5 72 74" stroke="#2A1066" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+    <line x1="60" y1="62" x2="48" y2="49" stroke="#2A1066" stroke-width="3.5" stroke-linecap="round"/>
+    <line x1="60" y1="62" x2="77" y2="50" stroke="#B6F22E" stroke-width="2.7" stroke-linecap="round"/>
+    <circle cx="60" cy="62" r="3.3" fill="#B6F22E" stroke="#2A1066" stroke-width="1.2"/>
+  </g>
+  <text x="270" y="172" font-family="Fredoka, Nunito, sans-serif" font-weight="650" font-size="96" fill="url(#wordmark)">Puntualito</text>
+</svg>

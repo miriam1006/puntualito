@@ -93,12 +93,17 @@ Requiere la migración `202611140004_pey_api_key_optional.sql`.
 
 ## WhatsApp Business
 
-Aplicar también `supabase/migrations/202611140003_whatsapp.sql` (tablas `whatsapp_messages` y `reminder_requests`).
+Aplicar también `supabase/migrations/202611140003_whatsapp.sql` (tablas `whatsapp_messages` y `reminder_requests`) y `202611150001_whatsapp_pay_now.sql` (registra el botón "Pagar ahora").
 
 Flujo:
 
 1. Al crear un cobro para un cliente con celular **y con "Aceptó recibir cobros por WhatsApp"**, se manda la plantilla de cobro nuevo (después de responder al panel).
-2. "Pagar ahora" abre `/pagar/<token>`. "Prefiero QR" abre un intento QR en Pey y responde con la imagen del QR. "Más tarde" guarda una fila en `reminder_requests` (para mañana) y confirma por texto.
+2. El cliente hace todo desde el chat, sin abrir links:
+   - **"Pagar ahora"** abre un intento push en Pey: le llega la notificación de CoDi a la app de su banco (al celular registrado por el negocio) y el chat le confirma, con un botón "Prefiero QR" por si no le llegó.
+   - **"Prefiero QR"** abre un intento QR en Pey y responde con la imagen del QR.
+   - **"Más tarde"** guarda una fila en `reminder_requests` (para mañana) y confirma con botones "Pagar ahora" y "Prefiero QR".
+
+   Las respuestas con botones son mensajes interactivos: como el texto libre, solo llegan dentro de las 24 h posteriores a que el cliente tocó un botón, que es justo cuando se mandan. La página `/pagar/<token>` queda como respaldo (botón `wa.me` del panel o cuando no hay plantillas).
 3. Cuando `process_pey_payment` marca el cobro pagado, se manda "Pago recibido".
 4. Los estados de Meta (enviado, entregado, leído, falló) se guardan y el panel los muestra por cobro.
 
@@ -109,7 +114,7 @@ Configuración en Meta for Developers:
 3. App Settings → Basic → App Secret a `WHATSAPP_APP_SECRET`.
 4. WhatsApp → Configuration → Webhook: URL `https://TU-DOMINIO/api/webhooks/whatsapp`, Verify token igual a `WHATSAPP_VERIFY_TOKEN`; suscribir el campo `messages`.
 5. Plantillas (categoría Utility, idioma Español (MEX) `es_MX`), con los parámetros en este orden:
-   - Cobro nuevo y recordatorio: cuerpo con `{{1}}` cliente, `{{2}}` negocio, `{{3}}` concepto, `{{4}}` monto. Botones en este orden: 0 = URL "Pagar ahora" dinámica `https://TU-DOMINIO/pagar/{{1}}`, 1 = respuesta rápida "Más tarde", 2 = respuesta rápida "Prefiero QR".
+   - Cobro nuevo y recordatorio: cuerpo con `{{1}}` cliente, `{{2}}` negocio, `{{3}}` concepto, `{{4}}` monto. Botones, los tres de **respuesta rápida** y en este orden: 0 = "Pagar ahora", 1 = "Más tarde", 2 = "Prefiero QR". Ninguno es de tipo URL.
    - Pago recibido: cuerpo con `{{1}}` concepto, `{{2}}` monto, `{{3}}` negocio. Sin botones.
 
 El texto libre (respuestas, QR) solo llega si el cliente escribió o tocó un botón en las últimas 24 h; por eso "Pago recibido" usa plantilla cuando está configurada.

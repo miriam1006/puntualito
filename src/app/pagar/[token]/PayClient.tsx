@@ -5,7 +5,7 @@ import { clientApi } from "@/lib/client-api";
 import { formatCents } from "@/lib/phone";
 
 type Due = {
-  merchant_name: string; concept: string; amount_cents: number;
+  merchant_name: string; concept: string; amount_cents: number; paid_at?: string | null;
   status: "open" | "paid" | "cancelled"; can_push: boolean; phone_hint: string | null;
 };
 type Attempt = { kind: "qr" | "push"; status: "creating" | "pending"; qr_string: string | null; expires_at: string } | null;
@@ -59,26 +59,57 @@ export default function PayClient({ token }: { token: string }) {
   const secondsLeft = attempt ? Math.max(0, Math.floor((Date.parse(attempt.expires_at) - now) / 1000)) : 0;
   const live = attempt && secondsLeft > 0 ? attempt : null;
   const countdown = `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}`;
+  const countdownClass = secondsLeft <= 60 ? "countdown urgent" : "countdown";
+  const showingQr = due.status === "open" && live?.kind === "qr";
 
   return (
     <main className="narrow pay">
       <section className="card">
-        <p className="muted">{due.merchant_name}</p>
+        {!showingQr && <span className="codi-badge">CoDi</span>}
+        <p className="payee-label">Pagas a</p>
+        <div className="payee">
+          <span className="payee-avatar" aria-hidden="true">{initials(due.merchant_name)}</span>
+          <span className="payee-name">{due.merchant_name}</span>
+        </div>
         <p className="amount">{formatCents(due.amount_cents)}</p>
-        <p>{due.concept}</p>
+        <p className="concept">{due.concept}</p>
 
-        {due.status === "paid" && <><p className="done">Pago recibido</p><p className="muted">Gracias. Ya puedes cerrar esta página.</p></>}
+        {due.status === "paid" && (
+          <div className="pay-receipt" role="status">
+            <p className="done receipt-title">¡Pago recibido!</p>
+            {due.paid_at && (
+              <p className="muted">
+                <time dateTime={due.paid_at}>
+                  {new Intl.DateTimeFormat("es-MX", {
+                    dateStyle: "long", timeStyle: "short", timeZone: "America/Mexico_City",
+                  }).format(new Date(due.paid_at))}
+                </time>
+              </p>
+            )}
+            <p className="muted">Gracias. Ya puedes cerrar esta página.</p>
+          </div>
+        )}
         {due.status === "cancelled" && <p className="notice">El negocio canceló este cobro. No hagas ningún pago.</p>}
 
-        {due.status === "open" && live?.kind === "qr" && (
+        {showingQr && (
           qrImage
-            ? <><img src={qrImage} alt="Código QR de CoDi para pagar" />
-                <p className="muted">Escanéalo desde la app de tu banco, en la opción CoDi. Vence en {countdown}.</p></>
+            ? <>
+                <div className="qr-frame">
+                  <img src={qrImage} alt="Código QR de CoDi para pagar" />
+                  <span className="codi-badge">CoDi</span>
+                </div>
+                <p className="muted">Escanéalo desde la app de tu banco, en la opción CoDi. Si estás en este mismo celular, guárdalo y léelo desde la galería.</p>
+                <p><span className={countdownClass} role="timer">Vence en {countdown}</span></p>
+                <div className="stack qr-actions">
+                  <a className="button secondary block" href={qrImage} download={`codi-${slug(due.merchant_name)}.png`}>Guardar QR</a>
+                </div>
+              </>
             : <p className="muted">Preparando tu código QR…</p>
         )}
         {due.status === "open" && live?.kind === "push" && (
           <><p className="done">Revisa tu celular</p>
-            <p className="muted">Enviamos el cobro a la app de tu banco. Ábrela y autorízalo. Vence en {countdown}.</p></>
+            <p className="muted">Enviamos el cobro a la app de tu banco. Ábrela y autorízalo.</p>
+            <p><span className={countdownClass} role="timer">Vence en {countdown}</span></p></>
         )}
         {due.status === "open" && !live && (
           <div className="stack">
@@ -98,3 +129,8 @@ export default function PayClient({ token }: { token: string }) {
     </main>
   );
 }
+
+const initials = (name: string) =>
+  name.trim().split(/\s+/).slice(0, 2).map(word => word[0]?.toUpperCase() ?? "").join("") || "·";
+const slug = (name: string) =>
+  name.toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "cobro";

@@ -90,62 +90,69 @@ export default function Dashboard() {
   }
 
   return (
-    <main>
+    <main className="app dashboard">
       <AppHeader merchantName={merchantName} active="panel" reviewCount={review.length} />
+      <h1>Panel de cobranza</h1>
 
       <div className="stats">
-        <div className="stat paid"><span className="muted">Cobrado</span><strong>{formatCents(sum(paid))}</strong><span className="muted">{paid.length} pagos</span></div>
-        <div className="stat open"><span className="muted">Pendiente</span><strong>{formatCents(sum(open))}</strong><span className="muted">{open.length} cobros</span></div>
+        <div className="stat paid"><span className="muted">Cobrado</span><strong>{formatCents(sum(paid))}</strong><span className="muted">{plural(paid.length, "pago", "pagos")}</span></div>
+        <div className="stat open"><span className="muted">Pendiente</span><strong>{formatCents(sum(open))}</strong><span className="muted">{plural(open.length, "cobro", "cobros")}</span></div>
         {review.length > 0 && (
           <a className="stat review" href="/revisar"><span className="muted">Por revisar</span><strong>{review.length}</strong><span className="muted">Resolver ahora →</span></a>
         )}
       </div>
 
-      <NewDue customers={customers} onCreated={refresh} />
-      <ScheduledSummary onGenerated={refresh} />
-
-      <section className="card">
-        <h2>Cobros</h2>
-        {error && <p className="error" role="alert">{error}</p>}
-        {dues.length === 0 ? <p className="muted">Aún no hay cobros. Crea el primero arriba.</p> : (
-          <ul className="list">
-            {dues.map(due => (
-              <li key={due.id}>
-                <div className="due-head">
-                  <span>{due.customers?.name ?? "Sin cliente"} · {due.concept}</span>
-                  <strong>{formatCents(due.amount_cents)}</strong>
-                </div>
-                <span className={`pill ${due.status}`}>{STATUS_LABEL[due.status]}</span>
-                <WhatsAppHistory messages={messagesByDue[due.id]} />
-                {due.status === "open" && (
-                  <div className="actions">
-                    <a className="button" href={`/pagar/${due.public_token}`} target="_blank" rel="noreferrer">Mostrar QR</a>
-                    {due.customers?.phone && (
-                      <a className="button secondary" href={whatsappUrl(due)} target="_blank" rel="noreferrer">Enviar por WhatsApp</a>
+      <div className="dashboard-columns">
+        <div>
+          <section className="card">
+            <h2>Cobros</h2>
+            {error && <p className="error" role="alert">{error}</p>}
+            {dues.length === 0 ? <p className="muted">Aún no hay cobros. Crea el primero con «Nuevo cobro».</p> : (
+              <ul className="list">
+                {dues.map(due => (
+                  <li key={due.id}>
+                    <div className="due-head">
+                      <span>{due.customers?.name ?? "Sin cliente"} · {due.concept}</span>
+                      <strong>{formatCents(due.amount_cents)}</strong>
+                    </div>
+                    <span className={`pill ${due.status}`}>{STATUS_LABEL[due.status]}</span>
+                    <WhatsAppHistory messages={messagesByDue[due.id]} />
+                    {due.status === "open" && (
+                      <div className="due-actions">
+                        <a className="button" href={`/pagar/${due.public_token}`} target="_blank" rel="noreferrer">Mostrar QR</a>
+                        {due.customers?.phone && (
+                          <a className="button" href={whatsappUrl(due)} target="_blank" rel="noreferrer">Enviar por WhatsApp</a>
+                        )}
+                        <button onClick={() => copyLink(due)}>{copied === due.id ? "Link copiado" : "Copiar link"}</button>
+                        {due.can_verify && (
+                          <button onClick={() => verify(due)} disabled={verifying === due.id}>
+                            {verifying === due.id ? "Verificando…" : "Verificar pago"}
+                          </button>
+                        )}
+                        <button className="quiet" onClick={() => cancel(due)}>Cancelar</button>
+                      </div>
                     )}
-                    <button className="secondary" onClick={() => copyLink(due)}>{copied === due.id ? "Link copiado" : "Copiar link"}</button>
-                    {due.can_verify && (
-                      <button className="secondary" onClick={() => verify(due)} disabled={verifying === due.id}>
-                        {verifying === due.id ? "Verificando…" : "Verificar pago"}
-                      </button>
+                    {verifyResult?.dueId === due.id && <p className="muted" role="status">{verifyResult.text}</p>}
+                    {due.status === "review" && (
+                      <p className="notice">Llegó un pago que no coincide (monto distinto o pago repetido). <a className="link" href="/revisar">Resolver</a></p>
                     )}
-                    <button className="quiet" onClick={() => cancel(due)}>Cancelar</button>
-                  </div>
-                )}
-                {verifyResult?.dueId === due.id && <p className="muted" role="status">{verifyResult.text}</p>}
-                {due.status === "review" && (
-                  <p className="notice">Llegó un pago que no coincide (monto distinto o pago repetido). <a className="link" href="/revisar">Resolver</a></p>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
 
-      <Customers customers={customers} onCreated={refresh} />
+        <div>
+          <NewDue customers={customers} onCreated={refresh} />
+          <ScheduledSummary />
+        </div>
+      </div>
     </main>
   );
 }
+
+const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
 function CreateMerchant({ onCreated }: { onCreated: (merchant: { id: string; name: string }) => void }) {
   const [name, setName] = useState("");
@@ -207,7 +214,7 @@ function NewDue({ customers, onCreated }: { customers: Customer[]; onCreated: ()
           {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </div>
-      <div className="row">
+      <div className="row due-row">
         <div className="field">
           <label htmlFor="due-concept">Concepto</label>
           <input id="due-concept" required maxLength={100} placeholder="Mensualidad noviembre"
@@ -215,68 +222,15 @@ function NewDue({ customers, onCreated }: { customers: Customer[]; onCreated: ()
         </div>
         <div className="field">
           <label htmlFor="due-amount">Monto (MXN)</label>
-          <input id="due-amount" required inputMode="decimal" placeholder="0.01"
-            value={amount} onChange={e => setAmount(e.target.value)} />
+          <div className="money-input">
+            <span aria-hidden="true">$</span>
+            <input id="due-amount" required inputMode="decimal" placeholder="350.00"
+              value={amount} onChange={e => setAmount(e.target.value)} />
+          </div>
         </div>
       </div>
       <button type="submit" disabled={busy}>Crear cobro</button>
       {error && <p className="error" role="alert">{error}</p>}
     </form>
-  );
-}
-
-function Customers({ customers, onCreated }: { customers: Customer[]; onCreated: () => Promise<void> }) {
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [optIn, setOptIn] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setBusy(true); setError("");
-    try {
-      await clientApi("/api/customers", {
-        method: "POST", body: JSON.stringify({ name: name.trim(), phone, whatsapp_opt_in: optIn }),
-      });
-      setName(""); setPhone(""); setOptIn(false);
-      await onCreated();
-    } catch (e) { setError(e instanceof Error ? e.message : "No se pudo guardar."); }
-    finally { setBusy(false); }
-  }
-  return (
-    <section className="card">
-      <h2>Clientes</h2>
-      <form onSubmit={submit}>
-        <div className="row">
-          <div className="field">
-            <label htmlFor="customer-name">Nombre</label>
-            <input id="customer-name" required maxLength={100} value={name} onChange={e => setName(e.target.value)} />
-          </div>
-          <div className="field">
-            <label htmlFor="customer-phone">Celular (10 dígitos)</label>
-            <input id="customer-phone" inputMode="tel" maxLength={30} value={phone} onChange={e => setPhone(e.target.value)} />
-          </div>
-        </div>
-        <div className="field">
-          <label className="check">
-            <input type="checkbox" checked={optIn} onChange={e => setOptIn(e.target.checked)} />
-            Aceptó recibir cobros por WhatsApp
-          </label>
-        </div>
-        <button type="submit" className="secondary" disabled={busy}>Agregar cliente</button>
-        {error && <p className="error" role="alert">{error}</p>}
-      </form>
-      {customers.length > 0 && (
-        <ul className="list" style={{ marginTop: 16 }}>
-          {customers.map(c => (
-            <li key={c.id}>
-              {c.name} <span className="muted">{c.phone ?? "sin celular"}
-                {c.preferred_channel !== "unknown" && ` · paga por ${c.preferred_channel === "push" ? "notificación" : "QR"}`}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-      <p className="muted" style={{ marginTop: 12 }}>Para editar, dar de baja o programar cobros, ve a <a className="link" href="/clientes">Clientes y planes</a>.</p>
-    </section>
   );
 }

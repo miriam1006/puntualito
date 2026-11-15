@@ -28,6 +28,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
         merchant_name: merchant?.name ?? "",
         concept: due.concept,
         amount_cents: due.amount_cents,
+        paid_at: due.status === "paid" ? due.paid_at : null,
         // 'review' se muestra al pagador como recibido: el comercio resuelve la diferencia.
         status: due.status === "review" ? "paid" : due.status,
         can_push: Boolean(customer?.active && customer.phone),
