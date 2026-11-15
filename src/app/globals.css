@@ -52,7 +52,6 @@ p { margin: 0 0 12px; }
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 18px; margin-bottom: 16px; box-shadow: var(--shadow);
 }
-.card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .intro { margin-bottom: 16px; }
 .intro .generate { margin-top: 4px; }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
@@ -235,3 +234,4 @@ main.pay::before { width: 57px; height: 70px; }
 .form-actions button { flex: 1 1 auto; }
 .hint { margin: 8px 0 0; font-size: 0.82rem; }
 .success { color: var(--ink); font-size: 0.9rem; margin: 10px 0 0; padding: 8px 12px; border-radius: 12px; background: #F3FCD0; }
+input::placeholder, textarea::placeholder { color: #A9A3BD; opacity: 1; }
