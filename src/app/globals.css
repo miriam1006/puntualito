@@ -235,3 +235,4 @@ main.pay::before { width: 57px; height: 70px; }
 .hint { margin: 8px 0 0; font-size: 0.82rem; }
 .success { color: var(--ink); font-size: 0.9rem; margin: 10px 0 0; padding: 8px 12px; border-radius: 12px; background: #F3FCD0; }
 input::placeholder, textarea::placeholder { color: #A9A3BD; opacity: 1; }
+.due-actions .demo-link { align-self: center; padding: 6px 8px; color: var(--muted); font-size: 0.85rem; text-decoration: underline; text-underline-offset: 3px; }

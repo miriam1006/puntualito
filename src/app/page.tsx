@@ -22,7 +22,6 @@ export default function Dashboard() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [dues, setDues] = useState<Due[]>([]);
   const [error, setError] = useState("");
-  const [copied, setCopied] = useState("");
   const [verifying, setVerifying] = useState("");
   const [pushing, setPushing] = useState("");
   const [verifyResult, setVerifyResult] = useState<{ dueId: string; text: string } | null>(null);
@@ -59,18 +58,8 @@ export default function Dashboard() {
   const open = dues.filter(d => d.status === "open");
   const review = dues.filter(d => d.status === "review");
   const sum = (list: Due[]) => list.reduce((total, d) => total + d.amount_cents, 0);
-  const linkFor = (due: Due) => `${window.location.origin}/pagar/${due.public_token}`;
   const merchantName = session.merchant.name;
 
-  async function copyLink(due: Due) {
-    await navigator.clipboard.writeText(linkFor(due));
-    setCopied(due.id);
-    setTimeout(() => setCopied(""), 2000);
-  }
-  function whatsappUrl(due: Due) {
-    const text = `Hola ${due.customers?.name ?? ""}, te comparto tu cobro de ${merchantName}: ${due.concept} por ${formatCents(due.amount_cents)}. Puedes pagarlo con CoDi aquí: ${linkFor(due)}`;
-    return `https://wa.me/52${due.customers?.phone}?text=${encodeURIComponent(text)}`;
-  }
   async function cancel(due: Due) {
     setError("");
     try { await clientApi(`/api/dues/${due.id}/cancel`, { method: "POST", body: "{}" }); await refresh(); }
@@ -133,18 +122,16 @@ export default function Dashboard() {
                             {pushing === due.id ? "Enviando…" : "Cobrar ahora"}
                           </button>
                         )}
-                        <a className="button" href={`/chat/${due.public_token}`} target="_blank" rel="noreferrer">Ver chat de WhatsApp</a>
                         <a className="button" href={`/pagar/${due.public_token}`} target="_blank" rel="noreferrer">Mostrar QR</a>
-                        {due.customers?.phone && (
-                          <a className="button" href={whatsappUrl(due)} target="_blank" rel="noreferrer">Enviar por WhatsApp</a>
-                        )}
-                        <button onClick={() => copyLink(due)}>{copied === due.id ? "Link copiado" : "Copiar link"}</button>
                         {due.can_verify && (
                           <button onClick={() => verify(due)} disabled={verifying === due.id}>
                             {verifying === due.id ? "Verificando…" : "Verificar pago"}
                           </button>
                         )}
                         <button className="quiet" onClick={() => cancel(due)}>Cancelar</button>
+                        {due.customers && (
+                          <a className="quiet demo-link" href={`/chat/${due.public_token}`} target="_blank" rel="noreferrer">Vista del cliente (demo)</a>
+                        )}
                       </div>
                     )}
                     {verifyResult?.dueId === due.id && <p className="muted" role="status">{verifyResult.text}</p>}
@@ -199,8 +186,9 @@ function CreateMerchant({ onCreated }: { onCreated: (merchant: { id: string; nam
 
 const NEW_CUSTOMER = "new";
 
-/** Alta rápida: elige un cliente o crea uno nuevo aquí mismo y, si tiene celular, manda el push
- * CoDi en el mismo paso ("Crear y cobrar ahora") sin pasar por Clientes ni por el chat. */
+/** Cobrar en un paso: elige un cliente o créalo aquí mismo; "Cobrar" crea el cobro y manda el push
+ * CoDi a su celular (y la plantilla de WhatsApp cuando esté configurada). Guardar clientes sin
+ * cobrarles vive en Clientes y planes. */
 function NewDue({ customers, onCreated }: { customers: Customer[]; onCreated: () => Promise<void> }) {
   const [customerId, setCustomerId] = useState(NEW_CUSTOMER);
   const [name, setName] = useState("");
@@ -208,22 +196,22 @@ function NewDue({ customers, onCreated }: { customers: Customer[]; onCreated: ()
   const [optIn, setOptIn] = useState(true);
   const [concept, setConcept] = useState("");
   const [amount, setAmount] = useState("");
-  const [busy, setBusy] = useState("");
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<{ text: string; token: string; ok: boolean } | null>(null);
 
   const isNew = customerId === NEW_CUSTOMER;
   const selected = customers.find(c => c.id === customerId);
-  const canPush = isNew ? phone.replace(/\D/g, "").length >= 10 : Boolean(selected?.phone);
+  const missingPhone = !isNew && selected !== undefined && !selected.phone;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const pushNow = (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value") === "push";
     const cents = parsePesosToCents(amount);
     if (!cents) { setError("Escribe un monto válido, por ejemplo 350 o 350.50."); return; }
-    setBusy(pushNow ? "push" : "create"); setError(""); setResult(null);
+    if (missingPhone) return;
+    setBusy(true); setError(""); setResult(null);
     try {
-      let id: string | null = customerId || null;
+      let id = customerId;
       if (isNew) {
         const data = await clientApi("/api/customers", {
           method: "POST", body: JSON.stringify({ name: name.trim(), phone, whatsapp_opt_in: optIn }),
@@ -236,19 +224,15 @@ function NewDue({ customers, onCreated }: { customers: Customer[]; onCreated: ()
         method: "POST", body: JSON.stringify({ customer_id: id, concept: concept.trim(), amount_cents: cents }),
       });
       setConcept(""); setAmount("");
-      if (pushNow) {
-        try {
-          const push = await clientApi(`/api/dues/${due.id}/push`, { method: "POST", body: "{}" });
-          setResult({ text: push.text, token: due.public_token, ok: push.sent });
-        } catch (e) {
-          setResult({ text: `El cobro se creó, pero no se mandó la notificación: ${e instanceof Error ? e.message : "intenta de nuevo"}`, token: due.public_token, ok: false });
-        }
-      } else {
-        setResult({ text: "Cobro creado.", token: due.public_token, ok: true });
+      try {
+        const push = await clientApi(`/api/dues/${due.id}/push`, { method: "POST", body: "{}" });
+        setResult({ text: push.text, token: due.public_token, ok: push.sent });
+      } catch (e) {
+        setResult({ text: `El cobro se creó, pero no se mandó la notificación: ${e instanceof Error ? e.message : "intenta de nuevo"}. Usa «Cobrar ahora» o «Mostrar QR» en la lista.`, token: due.public_token, ok: false });
       }
       await onCreated();
     } catch (e) { setError(e instanceof Error ? e.message : "No se pudo crear el cobro."); await onCreated().catch(() => {}); }
-    finally { setBusy(""); }
+    finally { setBusy(false); }
   }
 
   return (
@@ -259,7 +243,6 @@ function NewDue({ customers, onCreated }: { customers: Customer[]; onCreated: ()
         <select id="due-customer" value={customerId} onChange={e => { setCustomerId(e.target.value); setResult(null); }}>
           <option value={NEW_CUSTOMER}>+ Cliente nuevo</option>
           {customers.map(c => <option key={c.id} value={c.id}>{c.name}{c.phone ? "" : " (sin celular)"}</option>)}
-          <option value="">Sin cliente (cobro en mostrador)</option>
         </select>
       </div>
       {isNew && (
@@ -272,7 +255,7 @@ function NewDue({ customers, onCreated }: { customers: Customer[]; onCreated: ()
             </div>
             <div className="field">
               <label htmlFor="due-new-phone">Celular (10 dígitos)</label>
-              <input id="due-new-phone" inputMode="tel" maxLength={30} placeholder="Ej. 55 1234 5678" autoComplete="off"
+              <input id="due-new-phone" required inputMode="tel" maxLength={30} placeholder="Ej. 55 1234 5678" autoComplete="off"
                 value={phone} onChange={e => setPhone(e.target.value)} />
             </div>
           </div>
@@ -297,20 +280,12 @@ function NewDue({ customers, onCreated }: { customers: Customer[]; onCreated: ()
           </div>
         </div>
       </div>
-      <div className="form-actions">
-        {canPush && (
-          <button type="submit" value="push" disabled={Boolean(busy)}>
-            {busy === "push" ? "Enviando…" : "Crear y cobrar ahora"}
-          </button>
-        )}
-        <button type="submit" value="create" className={canPush ? "secondary" : undefined} disabled={Boolean(busy)}>
-          {busy === "create" ? "Creando…" : canPush ? "Solo crear" : "Crear cobro"}
-        </button>
-      </div>
-      {canPush && <p className="muted hint">«Cobrar ahora» manda la notificación CoDi a la app del banco del cliente.</p>}
+      {missingPhone && <p className="notice">Este cliente no tiene celular. Agrégalo en <a className="link" href="/clientes">Clientes y planes</a> para cobrarle.</p>}
+      <button type="submit" className="block" disabled={busy || missingPhone}>{busy ? "Cobrando…" : "Cobrar"}</button>
+      <p className="muted hint">Le llega una notificación CoDi a la app de su banco para autorizar el pago.</p>
       {result && (
         <p className={result.ok ? "success" : "error"} role="status">
-          {result.text} <a className="link" href={`/chat/${result.token}`} target="_blank" rel="noreferrer">Ver chat</a>
+          {result.text} <a className="link" href={`/chat/${result.token}`} target="_blank" rel="noreferrer">Vista del cliente (demo)</a>
         </p>
       )}
       {error && <p className="error" role="alert">{error}</p>}
