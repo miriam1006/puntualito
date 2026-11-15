@@ -227,3 +227,11 @@ main.pay::before { width: 57px; height: 70px; }
 }
 .countdown.urgent { background: #FFF3C4; color: #805500; }
 .pay .qr-actions { margin-top: 14px; }
+
+/* Nuevo cobro: alta de cliente en línea y "Crear y cobrar ahora" */
+.new-customer { margin: 0 0 14px; padding: 12px 14px 10px; border-radius: 14px; background: var(--accent-soft); }
+.new-customer .field:last-child { margin-bottom: 8px; }
+.form-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.form-actions button { flex: 1 1 auto; }
+.hint { margin: 8px 0 0; font-size: 0.82rem; }
+.success { color: var(--ink); font-size: 0.9rem; margin: 10px 0 0; padding: 8px 12px; border-radius: 12px; background: #F3FCD0; }
