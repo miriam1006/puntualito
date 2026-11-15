@@ -119,6 +119,7 @@ export default function Dashboard() {
                     <WhatsAppHistory messages={messagesByDue[due.id]} />
                     {due.status === "open" && (
                       <div className="due-actions">
+                        <a className="button" href={`/chat/${due.public_token}`} target="_blank" rel="noreferrer">Ver chat de WhatsApp</a>
                         <a className="button" href={`/pagar/${due.public_token}`} target="_blank" rel="noreferrer">Mostrar QR</a>
                         {due.customers?.phone && (
                           <a className="button" href={whatsappUrl(due)} target="_blank" rel="noreferrer">Enviar por WhatsApp</a>

@@ -121,6 +121,25 @@ Configuración en Meta for Developers:
 
 El texto libre (respuestas, QR) solo llega si el cliente escribió o tocó un botón en las últimas 24 h; por eso "Pago recibido" usa plantilla cuando está configurada.
 
+## Vista previa del chat de WhatsApp (`/chat/<token>`)
+
+Mientras Meta verifica el negocio (sin verificación, la cuenta de WhatsApp no envía mensajes; error 131031), cada cobro se puede probar en una vista previa del chat: botón **"Ver chat de WhatsApp"** en el panel.
+
+- Se ve como el chat de WhatsApp: mensaje del cobro con **"Pagar ahora"** y **"Más tarde"**.
+- Los botones usan exactamente las mismas respuestas que el webhook de Meta (`src/lib/chat-flow.ts`). **"Pagar ahora" manda el push de CoDi real con Pey** al celular registrado del cliente; "Enviar QR" genera el QR real; "Más tarde" agenda el recordatorio.
+- El pago lo confirma el webhook de Pey como siempre; el chat consulta el estado y muestra "¡Pago recibido!".
+- Expone lo mismo que el link público (negocio, concepto y monto), nunca el nombre del cliente.
+
+Lo único simulado es el canal: el mensaje se ve en esta página y no en la app de WhatsApp.
+
+## Ramas
+
+- `main`: versión estable, la que se despliega.
+- Cada función entra con su rama `feat/<función>` y un merge `--no-ff` a `main`, para que el historial muestre qué trajo cada una:
+  - `feat/visual-polish`: ajustes visuales del panel y del link de pago, y el botón "Pagar ahora" por WhatsApp (respuesta rápida que manda el push).
+  - `feat/whatsapp-simulator`: vista previa del chat (`/chat/<token>`) y lógica de respuestas compartida (`lib/chat-flow.ts`).
+  - Anteriores: `feat/pey-push-reconcile`, `feat/review-plans`, `feat/whatsapp`.
+
 ## Estructura
 
 ```
@@ -132,6 +151,8 @@ src/app/api/webhooks/pey webhook firmado
 src/lib/whatsapp.ts      cliente de WhatsApp Cloud API: plantillas, texto, imagen
 src/lib/whatsapp-webhook.ts     firma X-Hub-Signature-256 y parseo de eventos de Meta
 src/lib/whatsapp-notify.ts      envíos al crear y pagar, respuestas a botones
+src/lib/chat-flow.ts            respuestas del chat (Pagar ahora, Más tarde, QR), compartidas con la vista previa
+src/app/chat/[token]            vista previa del chat de WhatsApp
 src/app/api/webhooks/whatsapp   webhook de Meta (handshake GET y eventos POST)
 src/app/api/pay/[token]  API pública del link de pago
 src/app/pagar/[token]    página pública de pago
